@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import {
   ArrowRight,
   BarChart3,
@@ -554,19 +555,19 @@ export function PlannerApp() {
     if (task) planner.upsertTask({ ...task, quadrant });
   }
 
-  if (!planner.ready || !activeDate) return <div className="app-loading"><span>F</span><strong>Flowday</strong><i /></div>;
+  if (!planner.ready || !activeDate) return <div className="app-loading"><span><Image src="/icon.png" width={48} height={48} alt="" priority /></span><strong>Flowday</strong><i /></div>;
 
   return (
     <main className={`planner-shell theme-${planner.theme}`}>
       <aside className="desktop-sidebar">
-        <button className="app-brand" onClick={() => setActive('habit')}><span>F</span><strong>Flowday</strong></button>
+        <button className="app-brand" onClick={() => setActive('habit')}><span><Image src="/icon.png" width={33} height={33} alt="" priority /></span><strong>Flowday</strong></button>
         <nav>{NAV_ITEMS.map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => setActive(id)}><Icon size={18} /><span>{label}</span>{id === 'inbox' ? <b>{planner.tasks.filter((task) => !task.start && !task.completed).length}</b> : null}</button>)}</nav>
         <section className="sidebar-projects"><header><span>프로젝트</span><Plus size={14} /></header>{PROJECTS.map((project) => <button key={project.name}><i className={project.color} />{project.name}<span>{planner.tasks.filter((task) => task.project === project.name && !task.completed).length}</span></button>)}</section>
         <footer><button onClick={() => setThemeMenu((value) => !value)}><Settings2 size={18} />설정</button><div className="sync-state"><Cloud size={15} /><span>이 기기에 저장됨</span></div></footer>
       </aside>
 
       <section className="planner-main">
-        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')}>F</button><div><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><button className="icon-button ghost" onClick={() => setThemeMenu((value) => !value)} aria-label="설정"><Settings2 size={20} /></button></header>
+        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/icon.png" width={39} height={39} alt="" priority /></button><div><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><button className="icon-button ghost" onClick={() => setThemeMenu((value) => !value)} aria-label="설정"><Settings2 size={20} /></button></header>
         <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" aria-label="동기화 상태"><Cloud size={18} /></button><button className="avatar-button">SP</button></div></header>
 
         <div className="view-container">
