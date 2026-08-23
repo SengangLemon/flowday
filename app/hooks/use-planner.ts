@@ -125,7 +125,7 @@ export function usePlanner() {
   const toggleTask = useCallback((taskId: string, occurrenceDate?: string) => {
     setTasks((current) => current.map((task) => {
       if (task.id !== taskId) return task;
-      if (task.repeat === 'daily') {
+      if (task.repeat !== 'none') {
         const date = occurrenceDate ?? today;
         const checked = task.completionDates.includes(date);
         return {

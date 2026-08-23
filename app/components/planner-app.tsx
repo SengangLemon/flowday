@@ -47,6 +47,7 @@ import {
   PlannerView,
   PROJECTS,
   Quadrant,
+  repeatRuleLabel,
   ScheduleBlock,
   scheduleBlockDuration,
   shiftDate,
@@ -159,7 +160,7 @@ function TaskCard({ task, onEdit, onToggle, onFocus, draggable = false, onDragSt
       <button className="task-circle" aria-label={task.completed ? '미완료로 변경' : '완료'} onClick={(event) => { event.stopPropagation(); onToggle(task.id, task.occurrenceDate); }}>{task.completed ? <Check size={13} /> : <Circle size={16} />}</button>
       <div className="task-copy">
         <div className="task-title-row"><strong>{task.title}</strong>{task.priority < 4 ? <span className={`priority-mark p${task.priority}`}>P{task.priority}</span> : null}</div>
-        <span>{task.start ? `${task.start} · ${task.duration}분` : '시간 미정'}<i />{task.project}{task.repeat === 'daily' ? <><i /><Repeat2 size={11} />매일</> : null}</span>
+        <span>{task.start ? `${task.start} · ${task.duration}분` : '시간 미정'}<i />{task.project}{task.repeat !== 'none' ? <><i /><Repeat2 size={11} />{repeatRuleLabel(task.repeat)}</> : null}</span>
         {layout === 'timeline' && task.notes ? <p>{task.notes}</p> : null}
       </div>
       {onFocus && !task.completed ? <button className="task-focus-button" aria-label="이 작업에 집중" onClick={(event) => { event.stopPropagation(); onFocus(task.id); }}><Focus size={15} /></button> : null}
@@ -654,6 +655,29 @@ function ThemeMenu({ theme, onChange, onClose }: ThemeMenuProps) {
   return <div className="theme-menu"><header><strong>화면 테마</strong><button onClick={onClose}><MoreHorizontal size={16} /></button></header>{themes.map(({ id, label, icon: Icon }) => <button className={theme === id ? 'selected' : ''} key={id} onClick={() => { onChange(id); onClose(); }}><Icon size={17} /><span>{label}</span>{theme === id ? <Check size={15} /> : null}</button>)}</div>;
 }
 
+type SearchOverlayProps = {
+  query: string;
+  tasks: PlannerTask[];
+  goals: PlanGoal[];
+  blocks: ScheduleBlock[];
+  onQueryChange: (query: string) => void;
+  onClose: () => void;
+  onOpenTask: (task: PlannerTask) => void;
+  onOpenGoal: (goal: PlanGoal) => void;
+  onOpenBlock: (block: ScheduleBlock) => void;
+};
+
+function SearchOverlay({ query, tasks, goals, blocks, onQueryChange, onClose, onOpenTask, onOpenGoal, onOpenBlock }: SearchOverlayProps) {
+  const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
+  const matches = (...values: string[]) => values.join(' ').toLocaleLowerCase('ko-KR').includes(normalizedQuery);
+  const taskResults = normalizedQuery ? tasks.filter((task) => matches(task.title, task.project, task.notes, task.goal)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6) : [];
+  const goalResults = normalizedQuery ? goals.filter((goal) => matches(goal.title, goal.detail, goal.period)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4) : [];
+  const blockResults = normalizedQuery ? blocks.filter((block) => matches(block.name, block.start, block.end)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4) : [];
+  const hasResults = taskResults.length + goalResults.length + blockResults.length > 0;
+
+  return <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div><header><Search size={18} /><input autoFocus value={query} placeholder="할 일, 계획, 시간 블록 검색" onChange={(event) => onQueryChange(event.target.value)} /><button type="button" onClick={onClose}>ESC</button></header>{!normalizedQuery ? <p>제목, 프로젝트, 메모와 계획을 한 번에 검색할 수 있습니다.</p> : null}{normalizedQuery && !hasResults ? <p>일치하는 항목이 없습니다.</p> : null}{taskResults.length ? <div className="search-result-group"><strong>할 일</strong>{taskResults.map((task) => <button type="button" key={task.id} onClick={() => onOpenTask(task)}><i className={task.color} /><span><b>{task.title}</b><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div> : null}{goalResults.length ? <div className="search-result-group"><strong>계획</strong>{goalResults.map((goal) => <button type="button" key={goal.id} onClick={() => onOpenGoal(goal)}><i className={goal.color} /><span><b>{goal.title}</b><small>{goal.period} · {goal.parentId ? '하위 계획' : '최상위 계획'}</small></span><Target size={15} /></button>)}</div> : null}{blockResults.length ? <div className="search-result-group"><strong>시간 블록</strong>{blockResults.map((block) => <button type="button" key={block.id} onClick={() => onOpenBlock(block)}><i className={block.color} /><span><b>{block.name}</b><small>{block.start}–{block.end}</small></span><Clock3 size={15} /></button>)}</div> : null}</div></div>;
+}
+
 type BottomNavProps = { active: PlannerView; onChange: (view: PlannerView) => void; onAdd: () => void };
 function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
   return <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">{NAV_ITEMS.slice(0, 3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}<button className="mobile-fab" onClick={onAdd} aria-label="새 할 일 추가"><Plus size={23} /></button>{NAV_ITEMS.slice(3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>;
@@ -668,8 +692,26 @@ export function PlannerApp() {
   const [timeBlockEditor, setTimeBlockEditor] = useState<TimeBlockEditorState>(null);
   const [themeMenu, setThemeMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const activeDate = selectedDate || planner.today;
+
+  useEffect(() => {
+    function handleKeyboard(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+      if (event.key === 'Escape') {
+        setSearchOpen(false);
+        setSearchQuery('');
+      }
+    }
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, []);
+
+  function closeSearch() { setSearchOpen(false); setSearchQuery(''); }
 
   function openNew(date = activeDate, start: string | null = null, goal?: string) {
     const task = createEmptyTask(date, start);
@@ -709,7 +751,7 @@ export function PlannerApp() {
       </aside>
 
       <section className="planner-main">
-        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><button className="icon-button ghost" onClick={() => setThemeMenu((value) => !value)} aria-label="설정"><Settings2 size={20} /></button></header>
+        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div className="mobile-header-copy"><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><div className="mobile-header-actions"><button className="icon-button ghost" onClick={() => setSearchOpen(true)} aria-label="통합 검색"><Search size={19} /></button><button className="icon-button ghost" onClick={() => setThemeMenu((value) => !value)} aria-label="설정"><Settings2 size={20} /></button></div></header>
         <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" aria-label="동기화 상태"><Cloud size={18} /></button><button className="avatar-button">SP</button></div></header>
 
         <div className="view-container">
@@ -724,11 +766,11 @@ export function PlannerApp() {
       <button className="desktop-fab" onClick={() => openNew()}><Plus size={21} /><span>새 할 일</span></button>
       <BottomNav active={active} onChange={setActive} onAdd={() => openNew()} />
 
-      {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
+      {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} today={planner.today} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
       {themeMenu ? <ThemeMenu theme={planner.theme} onChange={planner.setTheme} onClose={() => setThemeMenu(false)} /> : null}
-      {searchOpen ? <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setSearchOpen(false); }}><div><header><Search size={18} /><input autoFocus placeholder="계획 검색" onChange={() => undefined} /><button onClick={() => setSearchOpen(false)}>ESC</button></header><p>제목, 프로젝트, 메모를 검색할 수 있습니다.</p>{planner.tasks.slice(0, 4).map((task) => <button key={task.id} onClick={() => { openEdit(task); setSearchOpen(false); }}><i className={task.color} /><span><strong>{task.title}</strong><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div></div> : null}
+      {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
     </main>
   );
 }

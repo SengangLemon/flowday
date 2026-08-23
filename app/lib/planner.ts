@@ -3,7 +3,7 @@ export type Theme = 'light' | 'dim' | 'dark';
 export type TaskColor = 'sage' | 'violet' | 'amber' | 'blue' | 'rose';
 export type Priority = 1 | 2 | 3 | 4;
 export type Quadrant = 'do' | 'schedule' | 'delegate' | 'delete';
-export type RepeatRule = 'none' | 'daily';
+export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type GoalPeriod = string;
 
 export type ScheduleBlock = {
@@ -67,6 +67,18 @@ export const PROJECTS: { name: string; color: TaskColor }[] = [
 
 export const GOAL_PERIODS: GoalPeriod[] = ['오늘', '3일', '이번 주', '2주', '4주', '3개월', '6개월', '1년', '3년+'];
 
+export const REPEAT_RULES: { value: RepeatRule; label: string; hint: string }[] = [
+  { value: 'none', label: '반복 안 함', hint: '선택한 날짜에 한 번만 표시됩니다.' },
+  { value: 'daily', label: '매일', hint: '시작일 이후 매일 표시되고 완료 기록은 날짜별로 저장됩니다.' },
+  { value: 'weekdays', label: '평일', hint: '시작일 이후 월요일부터 금요일까지 표시됩니다.' },
+  { value: 'weekly', label: '매주', hint: '시작일과 같은 요일에 매주 표시됩니다.' },
+  { value: 'monthly', label: '매월', hint: '시작일과 같은 날짜에 매월 표시됩니다.' },
+];
+
+export function repeatRuleLabel(rule: RepeatRule) {
+  return REPEAT_RULES.find((item) => item.value === rule)?.label ?? '반복 안 함';
+}
+
 export function dateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -125,11 +137,31 @@ export function monthGridDates(selectedDate: string) {
 }
 
 export function taskOccursOn(task: PlannerTask, date: string) {
-  return task.repeat === 'daily' ? date >= task.date : task.date === date;
+  if (date < task.date) return false;
+  if (task.repeat === 'none') return task.date === date;
+  if (task.repeat === 'daily') return true;
+
+  const [startYear, startMonth, startDay] = task.date.split('-').map(Number);
+  const [year, month, day] = date.split('-').map(Number);
+  const target = new Date(year, month - 1, day);
+
+  if (task.repeat === 'weekdays') {
+    const weekday = target.getDay();
+    return weekday >= 1 && weekday <= 5;
+  }
+
+  if (task.repeat === 'weekly') {
+    const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
+    const targetUtc = Date.UTC(year, month - 1, day);
+    return Math.floor((targetUtc - startUtc) / 86_400_000) % 7 === 0;
+  }
+
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  return day === Math.min(startDay, lastDayOfMonth);
 }
 
 export function taskCompletedOn(task: PlannerTask, date: string) {
-  return task.repeat === 'daily' ? task.completionDates.includes(date) : task.completed;
+  return task.repeat !== 'none' ? task.completionDates.includes(date) : task.completed;
 }
 
 export function tasksForDate(tasks: PlannerTask[], date: string) {
@@ -138,14 +170,15 @@ export function tasksForDate(tasks: PlannerTask[], date: string) {
     .map((task) => ({
       ...task,
       completed: taskCompletedOn(task, date),
-      occurrenceDate: task.repeat === 'daily' ? date : undefined,
+      occurrenceDate: task.repeat !== 'none' ? date : undefined,
     }));
 }
 
 export function normalizeTask(task: PlannerTask): PlannerTask {
+  const repeatRules: RepeatRule[] = ['none', 'daily', 'weekdays', 'weekly', 'monthly'];
   return {
     ...task,
-    repeat: task.repeat ?? 'none',
+    repeat: repeatRules.includes(task.repeat) ? task.repeat : 'none',
     completionDates: Array.isArray(task.completionDates) ? task.completionDates : [],
     occurrenceDate: undefined,
   };

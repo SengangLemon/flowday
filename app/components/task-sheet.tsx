@@ -13,18 +13,24 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import {
   PlannerTask,
   Priority,
   PROJECTS,
   Quadrant,
+  REPEAT_RULES,
   RepeatRule,
+  shiftDate,
   TaskColor,
+  tasksForDate,
+  timeToMinutes,
 } from '../lib/planner';
 
 type TaskSheetProps = {
   task: PlannerTask;
+  tasks: PlannerTask[];
+  today: string;
   isNew: boolean;
   onClose: () => void;
   onSave: (task: PlannerTask) => void;
@@ -47,12 +53,58 @@ const QUADRANT_OPTIONS: { value: Quadrant; label: string }[] = [
   { value: 'delete', label: '나중에 검토' },
 ];
 
-export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete, onDuplicate }: TaskSheetProps) {
+const DURATION_OPTIONS = [15, 25, 30, 45, 60, 90, 120, 180, 240, 360, 480];
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'));
+const DEFAULT_MINUTE_OPTIONS = ['00', '15', '30', '45'];
+
+function durationLabel(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest}분`;
+  return `${hours}시간${rest ? ` ${rest}분` : ''}`;
+}
+
+function hourLabel(value: string) {
+  const hour = Number(value);
+  return `${hour < 12 ? '오전' : '오후'} ${hour % 12 || 12}시`;
+}
+
+function clockTimeLabel(totalMinutes: number) {
+  const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+}
+
+export function TaskSheet({ task: initialTask, tasks, today, isNew, onClose, onSave, onDelete, onDuplicate }: TaskSheetProps) {
   const [task, setTask] = useState(initialTask);
   const [timed, setTimed] = useState(initialTask.start !== null);
+  const [startHour, startMinute] = (task.start ?? '09:00').split(':');
+  const durationOptions = useMemo(() => DURATION_OPTIONS.includes(task.duration)
+    ? DURATION_OPTIONS
+    : [...DURATION_OPTIONS, task.duration].sort((a, b) => a - b), [task.duration]);
+  const minuteOptions = useMemo(() => DEFAULT_MINUTE_OPTIONS.includes(startMinute)
+    ? DEFAULT_MINUTE_OPTIONS
+    : [...DEFAULT_MINUTE_OPTIONS, startMinute].sort(), [startMinute]);
+  const repeatOption = REPEAT_RULES.find((item) => item.value === task.repeat) ?? REPEAT_RULES[0];
+  const endMinutes = timeToMinutes(task.start ?? '09:00') + task.duration;
+  const endLabel = `${endMinutes >= 24 * 60 ? '다음 날 ' : ''}${clockTimeLabel(endMinutes)}`;
+  const conflictingTasks = useMemo(() => {
+    if (!timed || !task.start) return [];
+    const start = timeToMinutes(task.start);
+    const end = start + task.duration;
+    return tasksForDate(tasks, task.date).filter((candidate) => {
+      if (candidate.id === task.id || !candidate.start) return false;
+      const candidateStart = timeToMinutes(candidate.start);
+      const candidateEnd = candidateStart + candidate.duration;
+      return start < candidateEnd && end > candidateStart;
+    });
+  }, [task.date, task.duration, task.id, task.start, tasks, timed]);
 
   function update<K extends keyof PlannerTask>(key: K, value: PlannerTask[K]) {
     setTask((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateStart(nextHour: string, nextMinute: string) {
+    update('start', `${nextHour}:${nextMinute}`);
   }
 
   function handleProject(projectName: string) {
@@ -104,22 +156,31 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
               <CalendarDays size={18} />
               <label><span>날짜</span><input type="date" value={task.date} onChange={(event) => update('date', event.target.value)} /></label>
             </div>
+            <div className="date-shortcuts" aria-label="빠른 날짜 선택">
+              {[{ label: '오늘', date: today }, { label: '내일', date: shiftDate(today, 1) }, { label: '일주일 뒤', date: shiftDate(today, 7) }].map((item) => (
+                <button className={task.date === item.date ? 'selected' : ''} type="button" key={item.label} onClick={() => update('date', item.date)}>{item.label}</button>
+              ))}
+            </div>
             <div className="field-row field-row-toggle">
               <Clock3 size={18} />
               <div><strong>시간 블록</strong><small>시간표에 배치하기</small></div>
               <button className={`switch ${timed ? 'on' : ''}`} type="button" role="switch" aria-checked={timed} onClick={() => setTimed((value) => !value)}><i /></button>
             </div>
             {timed ? (
-              <div className="field-pair">
-                <label><span>시작</span><input type="time" value={task.start ?? '09:00'} step="900" onChange={(event) => update('start', event.target.value)} /></label>
-                <label><span>길이(분)</span><input type="number" min="15" max="1425" step="15" value={task.duration} onChange={(event) => update('duration', Math.max(15, Math.min(1425, Number(event.target.value))))} /></label>
-              </div>
+              <>
+                <div className="field-pair">
+                  <div className="time-choice-field"><span>시작 시간</span><div><select aria-label="시작 시" value={startHour} onChange={(event) => updateStart(event.target.value, startMinute)}>{HOUR_OPTIONS.map((hour) => <option value={hour} key={hour}>{hourLabel(hour)}</option>)}</select><b>:</b><select aria-label="시작 분" value={startMinute} onChange={(event) => updateStart(startHour, event.target.value)}>{minuteOptions.map((minute) => <option value={minute} key={minute}>{minute}분</option>)}</select></div></div>
+                  <label><span>길이 선택</span><select aria-label="작업 길이" value={task.duration} onChange={(event) => update('duration', Number(event.target.value))}>{durationOptions.map((minutes) => <option value={minutes} key={minutes}>{durationLabel(minutes)}</option>)}</select></label>
+                </div>
+                <p className="time-end-preview"><Clock3 size={13} />{task.start ?? '09:00'} 시작 · {endLabel} 종료 예정</p>
+                {conflictingTasks.length ? <p className="schedule-warning" role="status"><Clock3 size={13} />같은 시간에 {conflictingTasks.slice(0, 2).map((item) => item.title).join(', ')} 일정이 있습니다.</p> : null}
+              </>
             ) : null}
             <div className="field-row">
               <Repeat2 size={18} />
-              <label><span>반복</span><select aria-label="반복" value={task.repeat} onChange={(event) => update('repeat', event.target.value as RepeatRule)}><option value="none">반복 안 함</option><option value="daily">매일</option></select></label>
+              <label><span>반복</span><select aria-label="반복" value={task.repeat} onChange={(event) => update('repeat', event.target.value as RepeatRule)}>{REPEAT_RULES.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
             </div>
-            {task.repeat === 'daily' ? <p className="repeat-hint"><Repeat2 size={13} />시작일 이후 매일 타임라인에 표시되며 완료 기록은 날짜별로 저장됩니다.</p> : null}
+            {task.repeat !== 'none' ? <p className="repeat-hint"><Repeat2 size={13} />{repeatOption.hint}</p> : null}
           </section>
 
           <section className="sheet-section">
