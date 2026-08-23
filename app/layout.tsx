@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,6 +10,14 @@ export const metadata: Metadata = {
   ),
   title: 'Flowday — 목표가 오늘이 되는 곳',
   description: '장기 목표를 오늘의 시간표와 집중 실행으로 연결하는 생활 관리 앱',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/flowday-icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/flowday-icon-512.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: [{ url: '/flowday-apple-icon-180.png', type: 'image/png', sizes: '180x180' }],
+  },
   openGraph: {
     type: 'website',
     locale: 'ko_KR',
@@ -29,6 +37,12 @@ export const metadata: Metadata = {
     description: '장기 목표를 오늘의 실행으로 연결하는 생활 관리 앱',
     images: ['/og.png'],
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#f7f1e6',
 };
 
 export default function RootLayout({

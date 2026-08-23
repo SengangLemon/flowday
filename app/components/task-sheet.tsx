@@ -112,9 +112,7 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
             {timed ? (
               <div className="field-pair">
                 <label><span>시작</span><input type="time" value={task.start ?? '09:00'} step="900" onChange={(event) => update('start', event.target.value)} /></label>
-                <label><span>길이</span><select value={task.duration} onChange={(event) => update('duration', Number(event.target.value))}>
-                  <option value="15">15분</option><option value="25">25분</option><option value="30">30분</option><option value="45">45분</option><option value="60">1시간</option><option value="90">1시간 30분</option><option value="120">2시간</option><option value="180">3시간</option>
-                </select></label>
+                <label><span>길이(분)</span><input type="number" min="15" max="1425" step="15" value={task.duration} onChange={(event) => update('duration', Math.max(15, Math.min(1425, Number(event.target.value))))} /></label>
               </div>
             ) : null}
             <div className="field-row">

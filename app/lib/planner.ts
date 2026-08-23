@@ -6,6 +6,16 @@ export type Quadrant = 'do' | 'schedule' | 'delegate' | 'delete';
 export type RepeatRule = 'none' | 'daily';
 export type GoalPeriod = string;
 
+export type ScheduleBlock = {
+  id: string;
+  name: string;
+  start: string;
+  end: string;
+  color: TaskColor;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type PlannerTask = {
   id: string;
   title: string;
@@ -40,9 +50,10 @@ export type PlanGoal = {
 };
 
 export type PlannerState = {
-  version: 4;
+  version: 5;
   tasks: PlannerTask[];
   goals: PlanGoal[];
+  scheduleBlocks: ScheduleBlock[];
   theme: Theme;
 };
 
@@ -148,6 +159,23 @@ export function timeToMinutes(time: string) {
 export function minutesToTime(minutes: number) {
   const normalized = Math.max(0, Math.min(23 * 60 + 45, minutes));
   return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+}
+
+export function scheduleBlockDuration(block: Pick<ScheduleBlock, 'start' | 'end'>) {
+  return Math.max(15, timeToMinutes(block.end) - timeToMinutes(block.start));
+}
+
+export function createEmptyScheduleBlock(start = '05:00', end = '08:00'): ScheduleBlock {
+  const now = Date.now();
+  return {
+    id: `block-${now}-${Math.random().toString(36).slice(2, 7)}`,
+    name: '',
+    start,
+    end,
+    color: 'sage',
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 export function createEmptyGoal(parentId: string | null = null): PlanGoal {

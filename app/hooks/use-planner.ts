@@ -7,12 +7,14 @@ import {
   PlanGoal,
   PlannerState,
   PlannerTask,
+  ScheduleBlock,
   taskCompletedOn,
   tasksForDate,
   Theme,
 } from '../lib/planner';
 
-const STORAGE_KEY = 'flowday:planner:v4';
+const STORAGE_KEY = 'flowday:planner:v5';
+const LEGACY_V4_STORAGE_KEY = 'flowday:planner:v4';
 const LEGACY_V3_STORAGE_KEY = 'flowday:planner:v3';
 const LEGACY_V2_STORAGE_KEY = 'flowday:planner:v2';
 const subscribeToHydration = () => () => undefined;
@@ -23,8 +25,15 @@ type LegacyState = {
   theme: Theme;
 };
 
+type LegacyV4State = {
+  version: 4;
+  tasks: PlannerTask[];
+  goals: PlanGoal[];
+  theme: Theme;
+};
+
 function defaultState(): PlannerState {
-  return { version: 4, tasks: [], goals: [], theme: 'light' };
+  return { version: 5, tasks: [], goals: [], scheduleBlocks: [], theme: 'light' };
 }
 
 function userCreatedTasks(tasks: PlannerTask[]) {
@@ -36,8 +45,22 @@ function readStoredState(): PlannerState {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as PlannerState;
-      if (parsed.version === 4 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals)) {
+      if (parsed.version === 5 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals) && Array.isArray(parsed.scheduleBlocks)) {
         return { ...parsed, tasks: parsed.tasks.map(normalizeTask) };
+      }
+    }
+
+    const legacyV4Stored = window.localStorage.getItem(LEGACY_V4_STORAGE_KEY);
+    if (legacyV4Stored) {
+      const legacy = JSON.parse(legacyV4Stored) as LegacyV4State;
+      if (legacy.version === 4 && Array.isArray(legacy.tasks) && Array.isArray(legacy.goals)) {
+        return {
+          version: 5,
+          tasks: legacy.tasks.map(normalizeTask),
+          goals: legacy.goals,
+          scheduleBlocks: [],
+          theme: legacy.theme ?? 'light',
+        };
       }
     }
 
@@ -47,9 +70,10 @@ function readStoredState(): PlannerState {
         const legacy = JSON.parse(legacyStored) as LegacyState;
         if ((legacy.version === 2 || legacy.version === 3) && Array.isArray(legacy.tasks)) {
           return {
-            version: 4,
+            version: 5,
             tasks: userCreatedTasks(legacy.tasks),
             goals: [],
+            scheduleBlocks: [],
             theme: legacy.theme ?? 'light',
           };
         }
@@ -71,17 +95,18 @@ export function usePlanner() {
   });
   const [tasks, setTasks] = useState<PlannerTask[]>(initialState.tasks);
   const [goals, setGoals] = useState<PlanGoal[]>(initialState.goals);
+  const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>(initialState.scheduleBlocks);
   const [theme, setThemeState] = useState<Theme>(initialState.theme);
 
   useEffect(() => {
     if (!ready) return;
-    const next: PlannerState = { version: 4, tasks, goals, theme };
+    const next: PlannerState = { version: 5, tasks, goals, scheduleBlocks, theme };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Saving is best-effort; interactions continue to work in-memory.
     }
-  }, [goals, ready, tasks, theme]);
+  }, [goals, ready, scheduleBlocks, tasks, theme]);
 
   const upsertTask = useCallback((task: PlannerTask) => {
     setTasks((current) => {
@@ -178,6 +203,21 @@ export function usePlanner() {
     }));
   }, []);
 
+  const upsertScheduleBlock = useCallback((block: ScheduleBlock) => {
+    setScheduleBlocks((current) => {
+      const saved = { ...block, updatedAt: Date.now() };
+      const exists = current.some((item) => item.id === block.id);
+      const next = exists
+        ? current.map((item) => item.id === block.id ? saved : item)
+        : [...current, saved];
+      return next.sort((a, b) => a.start.localeCompare(b.start));
+    });
+  }, []);
+
+  const deleteScheduleBlock = useCallback((blockId: string) => {
+    setScheduleBlocks((current) => current.filter((block) => block.id !== blockId));
+  }, []);
+
   const setTheme = useCallback((nextTheme: Theme) => {
     setThemeState(nextTheme);
   }, []);
@@ -194,6 +234,7 @@ export function usePlanner() {
     tasks,
     todayTasks,
     goals,
+    scheduleBlocks,
     theme,
     completedToday,
     upsertTask,
@@ -204,6 +245,8 @@ export function usePlanner() {
     upsertGoal,
     deleteGoal,
     toggleGoalCheck,
+    upsertScheduleBlock,
+    deleteScheduleBlock,
     setTheme,
   };
 }
