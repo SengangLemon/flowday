@@ -8,6 +8,7 @@ import {
   Flag,
   Folder,
   Goal,
+  Repeat2,
   StickyNote,
   Trash2,
   X,
@@ -18,6 +19,7 @@ import {
   Priority,
   PROJECTS,
   Quadrant,
+  RepeatRule,
   TaskColor,
 } from '../lib/planner';
 
@@ -115,6 +117,11 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
                 </select></label>
               </div>
             ) : null}
+            <div className="field-row">
+              <Repeat2 size={18} />
+              <label><span>Repeat</span><select aria-label="반복" value={task.repeat} onChange={(event) => update('repeat', event.target.value as RepeatRule)}><option value="none">반복 안 함</option><option value="daily">매일</option></select></label>
+            </div>
+            {task.repeat === 'daily' ? <p className="repeat-hint"><Repeat2 size={13} />시작일 이후 매일 타임라인에 표시되며 완료 기록은 날짜별로 저장됩니다.</p> : null}
           </section>
 
           <section className="sheet-section">
