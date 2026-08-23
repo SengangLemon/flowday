@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
-  createSeedGoals,
-  createSeedTasks,
   dateKey,
   normalizeTask,
   PlanGoal,
@@ -14,55 +12,62 @@ import {
   Theme,
 } from '../lib/planner';
 
-const STORAGE_KEY = 'flowday:planner:v3';
-const LEGACY_STORAGE_KEY = 'flowday:planner:v2';
+const STORAGE_KEY = 'flowday:planner:v4';
+const LEGACY_V3_STORAGE_KEY = 'flowday:planner:v3';
+const LEGACY_V2_STORAGE_KEY = 'flowday:planner:v2';
 const subscribeToHydration = () => () => undefined;
 
 type LegacyState = {
-  version: 2;
+  version: 2 | 3;
   tasks: PlannerTask[];
   theme: Theme;
 };
 
-function defaultState(today: string): PlannerState {
-  return { version: 3, tasks: createSeedTasks(today), goals: createSeedGoals(today), theme: 'light' };
+function defaultState(): PlannerState {
+  return { version: 4, tasks: [], goals: [], theme: 'light' };
 }
 
-function readStoredState(today: string): PlannerState {
+function userCreatedTasks(tasks: PlannerTask[]) {
+  return tasks.filter((task) => !task.id.startsWith('seed-')).map(normalizeTask);
+}
+
+function readStoredState(): PlannerState {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as PlannerState;
-      if (parsed.version === 3 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals)) {
+      if (parsed.version === 4 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals)) {
         return { ...parsed, tasks: parsed.tasks.map(normalizeTask) };
       }
     }
 
-    const legacyStored = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacyStored) {
-      const legacy = JSON.parse(legacyStored) as LegacyState;
-      if (legacy.version === 2 && Array.isArray(legacy.tasks)) {
-        return {
-          version: 3,
-          tasks: legacy.tasks.map(normalizeTask),
-          goals: createSeedGoals(today),
-          theme: legacy.theme ?? 'light',
-        };
+    for (const key of [LEGACY_V3_STORAGE_KEY, LEGACY_V2_STORAGE_KEY]) {
+      const legacyStored = window.localStorage.getItem(key);
+      if (legacyStored) {
+        const legacy = JSON.parse(legacyStored) as LegacyState;
+        if ((legacy.version === 2 || legacy.version === 3) && Array.isArray(legacy.tasks)) {
+          return {
+            version: 4,
+            tasks: userCreatedTasks(legacy.tasks),
+            goals: [],
+            theme: legacy.theme ?? 'light',
+          };
+        }
       }
     }
   } catch {
     // The app stays usable when storage is blocked or malformed.
   }
 
-  return defaultState(today);
+  return defaultState();
 }
 
 export function usePlanner() {
   const ready = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [today] = useState(() => dateKey(new Date()));
   const [initialState] = useState<PlannerState>(() => {
-    if (typeof window === 'undefined') return defaultState(today);
-    return readStoredState(today);
+    if (typeof window === 'undefined') return defaultState();
+    return readStoredState();
   });
   const [tasks, setTasks] = useState<PlannerTask[]>(initialState.tasks);
   const [goals, setGoals] = useState<PlanGoal[]>(initialState.goals);
@@ -70,7 +75,7 @@ export function usePlanner() {
 
   useEffect(() => {
     if (!ready) return;
-    const next: PlannerState = { version: 3, tasks, goals, theme };
+    const next: PlannerState = { version: 4, tasks, goals, theme };
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {

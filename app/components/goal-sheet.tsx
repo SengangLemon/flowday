@@ -2,7 +2,7 @@
 
 import { AlignLeft, Check, GitBranch, Repeat2, Target, Trash2, X } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
-import { GOAL_PERIODS, GoalPeriod, PlanGoal, TaskColor } from '../lib/planner';
+import { GOAL_PERIODS, PlanGoal, TaskColor } from '../lib/planner';
 
 type GoalSheetProps = {
   goal: PlanGoal;
@@ -23,6 +23,7 @@ const COLORS: { id: TaskColor; label: string }[] = [
 
 export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, onDelete }: GoalSheetProps) {
   const [goal, setGoal] = useState(initialGoal);
+  const isRoot = goal.parentId === null;
   const parentOptions = useMemo(() => {
     const descendants = new Set<string>();
     let changed = true;
@@ -57,7 +58,7 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
         <div className="sheet-handle" aria-hidden="true" />
         <header className="sheet-header">
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
-          <div><span className="overline">{isNew ? 'NEW PLAN' : 'PLAN DETAILS'}</span><h2 id="goal-sheet-title">{isNew ? '하위 계획 만들기' : '계획 수정하기'}</h2></div>
+          <div><span className="overline">{isNew ? 'NEW PLAN' : 'PLAN DETAILS'}</span><h2 id="goal-sheet-title">{isNew ? (isRoot ? '새 계획 만들기' : '하위 계획 만들기') : '계획 수정하기'}</h2></div>
           <button className="save-icon-button" type="submit" aria-label="저장"><Check size={19} /></button>
         </header>
 
@@ -69,7 +70,7 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
 
           <section className="sheet-section">
             <h3>계획 구조</h3>
-            <div className="field-row"><Target size={18} /><label><span>기간</span><select value={goal.period} onChange={(event) => update('period', event.target.value as GoalPeriod)}>{GOAL_PERIODS.map((period) => <option key={period}>{period}</option>)}</select></label></div>
+            <div className="field-row"><Target size={18} /><label><span>기간</span><input list="goal-period-options" value={goal.period} onChange={(event) => update('period', event.target.value)} placeholder="예: 5개월, 10일" aria-label="계획 기간" /><datalist id="goal-period-options">{GOAL_PERIODS.map((period) => <option value={period} key={period} />)}</datalist></label></div>
             <div className="field-row"><GitBranch size={18} /><label><span>상위 계획</span><select value={goal.parentId ?? ''} onChange={(event) => update('parentId', event.target.value || null)}><option value="">최상위 계획</option>{parentOptions.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label></div>
             <div className="field-row field-row-toggle"><Repeat2 size={18} /><div><strong>매일 체크</strong><small>잔디 기록에 매일 쌓기</small></div><button className={`switch ${goal.daily ? 'on' : ''}`} type="button" role="switch" aria-checked={goal.daily} onClick={() => update('daily', !goal.daily)}><i /></button></div>
           </section>
@@ -83,7 +84,7 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
           {!isNew ? <section className="sheet-secondary-actions one-action"><button className="danger" type="button" onClick={() => { onDelete(goal.id); onClose(); }}><Trash2 size={17} />이 계획과 하위 계획 삭제</button></section> : null}
         </div>
 
-        <footer className="sheet-footer"><button className="sheet-save-button" type="submit">{isNew ? '하위 계획 추가' : '변경사항 저장'}</button></footer>
+        <footer className="sheet-footer"><button className="sheet-save-button" type="submit">{isNew ? (isRoot ? '계획 만들기' : '하위 계획 추가') : '변경사항 저장'}</button></footer>
       </form>
     </div>
   );

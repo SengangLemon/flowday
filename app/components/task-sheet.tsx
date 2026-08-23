@@ -81,7 +81,7 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
           <div>
             <span className="overline">{isNew ? 'NEW TASK' : 'TASK DETAILS'}</span>
-            <h2 id="task-sheet-title">{isNew ? '새 계획 만들기' : '계획 수정하기'}</h2>
+            <h2 id="task-sheet-title">{isNew ? '새 할 일 만들기' : '할 일 수정하기'}</h2>
           </div>
           <button className="save-icon-button" type="submit" aria-label="저장"><Check size={19} /></button>
         </header>
@@ -119,7 +119,7 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
             ) : null}
             <div className="field-row">
               <Repeat2 size={18} />
-              <label><span>Repeat</span><select aria-label="반복" value={task.repeat} onChange={(event) => update('repeat', event.target.value as RepeatRule)}><option value="none">반복 안 함</option><option value="daily">매일</option></select></label>
+              <label><span>반복</span><select aria-label="반복" value={task.repeat} onChange={(event) => update('repeat', event.target.value as RepeatRule)}><option value="none">반복 안 함</option><option value="daily">매일</option></select></label>
             </div>
             {task.repeat === 'daily' ? <p className="repeat-hint"><Repeat2 size={13} />시작일 이후 매일 타임라인에 표시되며 완료 기록은 날짜별로 저장됩니다.</p> : null}
           </section>
@@ -143,7 +143,7 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
           <section className="sheet-section">
             <h3>세부 정보</h3>
             <label className="notes-field"><StickyNote size={18} /><textarea value={task.notes} onChange={(event) => update('notes', event.target.value)} placeholder="메모나 실행 기준을 적어보세요" rows={3} /></label>
-            <label className="goal-field"><Goal size={18} /><input value={task.goal} onChange={(event) => update('goal', event.target.value)} placeholder="연결할 상위 목표" /></label>
+            <label className="goal-field"><Goal size={18} /><input value={task.goal} onChange={(event) => update('goal', event.target.value)} placeholder="연결할 계획 이름" /></label>
             <div className="color-picker"><span>색상</span><div>{COLORS.map((color) => <button className={`${color.id} ${task.color === color.id ? 'selected' : ''}`} key={color.id} type="button" onClick={() => update('color', color.id)} aria-label={color.label}><Check size={13} /></button>)}</div></div>
           </section>
 
@@ -156,7 +156,7 @@ export function TaskSheet({ task: initialTask, isNew, onClose, onSave, onDelete,
         </div>
 
         <footer className="sheet-footer">
-          <button className="sheet-save-button" type="submit">{isNew ? '계획 추가' : '변경사항 저장'}</button>
+          <button className="sheet-save-button" type="submit">{isNew ? '할 일 추가' : '변경사항 저장'}</button>
         </footer>
       </form>
     </div>
