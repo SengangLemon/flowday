@@ -9,6 +9,7 @@ import {
   PlanGoal,
   PlannerState,
   PlannerTask,
+  PlannerView,
   ScheduleBlock,
   taskCompletedOn,
   tasksForDate,
@@ -28,9 +29,10 @@ const subscribeToHydration = () => () => undefined;
 
 export type PlannerSyncStatus = 'loading' | 'saving' | 'synced' | 'offline' | 'error';
 
-type StoredPlannerState = Omit<PlannerState, 'version' | 'onboardingCompleted'> & {
+type StoredPlannerState = Omit<PlannerState, 'version' | 'introducedViews'> & {
   version: 5 | 6;
   onboardingCompleted?: boolean;
+  introducedViews?: PlannerView[];
 };
 
 type PlannerBackup = {
@@ -41,8 +43,10 @@ type PlannerBackup = {
 };
 
 function defaultState(): PlannerState {
-  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light', onboardingCompleted: false };
+  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light', introducedViews: [] };
 }
+
+const PLANNER_VIEWS: PlannerView[] = ['habit', 'inbox', 'plan', 'calendar', 'focus'];
 
 function userCreatedTasks(tasks: PlannerTask[]) {
   return tasks.filter((task) => !task.id.startsWith('seed-')).map(normalizeTask);
@@ -96,7 +100,9 @@ function upgradeState(state: StoredPlannerState): PlannerState {
     goals,
     scheduleBlocks: state.scheduleBlocks,
     theme: normalizeTheme(state.theme),
-    onboardingCompleted: Boolean(state.onboardingCompleted),
+    introducedViews: state.onboardingCompleted
+      ? PLANNER_VIEWS
+      : PLANNER_VIEWS.filter((view) => state.introducedViews?.includes(view)),
   };
 }
 
@@ -550,8 +556,10 @@ export function usePlanner(userId: string) {
     commit((current) => ({ ...current, theme: nextTheme }));
   }, [commit]);
 
-  const setOnboardingCompleted = useCallback((completed: boolean) => {
-    commit((current) => ({ ...current, onboardingCompleted: completed }));
+  const markViewIntroduced = useCallback((view: PlannerView) => {
+    commit((current) => current.introducedViews.includes(view)
+      ? current
+      : { ...current, introducedViews: [...current.introducedViews, view] });
   }, [commit]);
 
   const exportBackup = useCallback(() => {
@@ -618,7 +626,7 @@ export function usePlanner(userId: string) {
     goals,
     scheduleBlocks,
     theme,
-    onboardingCompleted: state.onboardingCompleted,
+    introducedViews: state.introducedViews,
     lastSavedAt,
     saveError: localSaveError || syncStatus === 'error',
     syncStatus,
@@ -634,7 +642,7 @@ export function usePlanner(userId: string) {
     upsertScheduleBlock,
     deleteScheduleBlock,
     setTheme,
-    setOnboardingCompleted,
+    markViewIntroduced,
     exportBackup,
     importBackup,
     restoreRecovery,

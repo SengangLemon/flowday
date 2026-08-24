@@ -16,7 +16,7 @@ const password = `${randomUUID()}Aa1!`;
 const createdUserIds = [];
 
 function emptyState() {
-  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light', onboardingCompleted: false };
+  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light', introducedViews: [] };
 }
 
 try {

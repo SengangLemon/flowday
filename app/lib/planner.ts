@@ -57,7 +57,7 @@ export type PlannerState = {
   goals: PlanGoal[];
   scheduleBlocks: ScheduleBlock[];
   theme: Theme;
-  onboardingCompleted: boolean;
+  introducedViews: PlannerView[];
 };
 
 export const PROJECTS: { name: string; color: TaskColor }[] = [

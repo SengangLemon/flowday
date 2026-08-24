@@ -1,22 +1,20 @@
 'use client';
 
 import {
-  ArrowLeft,
-  ArrowRight,
   CalendarDays,
   Check,
   Focus,
   Inbox,
   Repeat2,
   Target,
+  X,
   type LucideIcon,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { PlannerView } from '../lib/planner';
 
-type TourStep = {
-  view: PlannerView;
+type MenuIntroContent = {
   menu: string;
   eyebrow: string;
   title: string;
@@ -25,18 +23,16 @@ type TourStep = {
   icon: LucideIcon;
 };
 
-const TOUR_STEPS: TourStep[] = [
-  {
-    view: 'habit',
+const MENU_INTROS: Record<PlannerView, MenuIntroContent> = {
+  habit: {
     menu: '습관',
     eyebrow: '오늘의 실행 화면',
     title: '시간 블록으로 오늘을 설계하세요',
-    description: '자주 쓰는 시간대를 블록으로 만들고, 인박스의 할 일을 원하는 시간에 배치하는 중심 화면입니다.',
+    description: '자주 쓰는 시간대를 블록으로 만들고, 인박스의 할 일을 원하는 시간에 배치하는 화면입니다.',
     points: ['반복 습관은 날짜별로 따로 체크', '내 생활에 맞는 시간 블록을 자유롭게 구성'],
     icon: Repeat2,
   },
-  {
-    view: 'inbox',
+  inbox: {
     menu: '인박스',
     eyebrow: '생각을 놓치지 않는 곳',
     title: '할 일을 먼저 모으고 나중에 정리하세요',
@@ -44,8 +40,7 @@ const TOUR_STEPS: TourStep[] = [
     points: ['아이젠하워 매트릭스로 중요도 판단', '시간이 정해지지 않은 할 일을 한곳에서 관리'],
     icon: Inbox,
   },
-  {
-    view: 'plan',
+  plan: {
     menu: '계획',
     eyebrow: '방향을 실행으로 바꾸는 곳',
     title: '큰 목표를 오늘 할 일까지 나누세요',
@@ -53,8 +48,7 @@ const TOUR_STEPS: TourStep[] = [
     points: ['장기 → 중기 → 단기 → 매일 계획으로 세분화', '매일 실행한 기록은 잔디 형태로 확인'],
     icon: Target,
   },
-  {
-    view: 'calendar',
+  calendar: {
     menu: '캘린더',
     eyebrow: '계획의 전체 흐름',
     title: '주간·월간·연간 일정을 한눈에 보세요',
@@ -62,8 +56,7 @@ const TOUR_STEPS: TourStep[] = [
     points: ['주간·월간·연간 보기 전환', '색상으로 프로젝트와 일정 흐름 파악'],
     icon: CalendarDays,
   },
-  {
-    view: 'focus',
+  focus: {
     menu: '집중',
     eyebrow: '계획을 끝내는 마지막 단계',
     title: '한 번에 하나의 일에 집중하세요',
@@ -71,27 +64,17 @@ const TOUR_STEPS: TourStep[] = [
     points: ['집중할 할 일을 선택하고 바로 시작', '완료 기록을 오늘의 계획에 반영'],
     icon: Focus,
   },
-];
+};
 
-type OnboardingTourProps = {
-  onViewChange: (view: PlannerView) => void;
+type MenuIntroProps = {
+  view: PlannerView;
   onComplete: () => void;
 };
 
-export function OnboardingTour({ onViewChange, onComplete }: OnboardingTourProps) {
-  const [stepIndex, setStepIndex] = useState(0);
+export function MenuIntro({ view, onComplete }: MenuIntroProps) {
   const dialogRef = useRef<HTMLElement>(null);
-  const step = TOUR_STEPS[stepIndex];
-  const Icon = step.icon;
-  const isFirst = stepIndex === 0;
-  const isLast = stepIndex === TOUR_STEPS.length - 1;
-
-  function goTo(nextIndex: number) {
-    const bounded = Math.max(0, Math.min(TOUR_STEPS.length - 1, nextIndex));
-    setStepIndex(bounded);
-    onViewChange(TOUR_STEPS[bounded].view);
-    window.requestAnimationFrame(() => dialogRef.current?.focus());
-  }
+  const intro = MENU_INTROS[view];
+  const Icon = intro.icon;
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
     if (event.key === 'Escape') {
@@ -99,16 +82,8 @@ export function OnboardingTour({ onViewChange, onComplete }: OnboardingTourProps
       onComplete();
       return;
     }
-    if (event.key === 'ArrowRight' && !isLast) {
-      event.preventDefault();
-      goTo(stepIndex + 1);
-    }
-    if (event.key === 'ArrowLeft' && !isFirst) {
-      event.preventDefault();
-      goTo(stepIndex - 1);
-    }
     if (event.key !== 'Tab') return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? []);
+    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button') ?? []);
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
@@ -128,35 +103,30 @@ export function OnboardingTour({ onViewChange, onComplete }: OnboardingTourProps
         className="onboarding-card"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="onboarding-title"
-        aria-describedby="onboarding-description"
+        aria-labelledby="menu-intro-title"
+        aria-describedby="menu-intro-description"
         tabIndex={-1}
         autoFocus
         onKeyDown={handleKeyDown}
       >
         <header className="onboarding-header">
           <div className="onboarding-step-icon"><Icon size={23} /></div>
-          <div className="onboarding-progress-copy"><span>{step.menu}</span><strong>{stepIndex + 1} / {TOUR_STEPS.length}</strong></div>
-          <button type="button" onClick={onComplete}>건너뛰기</button>
+          <div className="onboarding-progress-copy"><span>{intro.menu}</span><strong>이 메뉴를 처음 열었어요</strong></div>
+          <button type="button" onClick={onComplete} aria-label="안내 닫기"><X size={17} /></button>
         </header>
 
-        <div className="onboarding-progress" aria-hidden="true">
-          {TOUR_STEPS.map((item, index) => <i className={index <= stepIndex ? 'active' : ''} key={item.view} />)}
-        </div>
-
-        <div className="onboarding-copy" aria-live="polite">
-          <span className="overline">{step.eyebrow}</span>
-          <h2 id="onboarding-title">{step.title}</h2>
-          <p id="onboarding-description">{step.description}</p>
+        <div className="onboarding-copy">
+          <span className="overline">{intro.eyebrow}</span>
+          <h2 id="menu-intro-title">{intro.title}</h2>
+          <p id="menu-intro-description">{intro.description}</p>
         </div>
 
         <ul className="onboarding-points">
-          {step.points.map((point) => <li key={point}><span><Check size={13} /></span>{point}</li>)}
+          {intro.points.map((point) => <li key={point}><span><Check size={13} /></span>{point}</li>)}
         </ul>
 
-        <footer className="onboarding-actions">
-          <button className="onboarding-back" type="button" disabled={isFirst} onClick={() => goTo(stepIndex - 1)}><ArrowLeft size={16} />이전</button>
-          <button className="onboarding-next" type="button" onClick={() => { if (isLast) onComplete(); else goTo(stepIndex + 1); }}>{isLast ? 'Flowday 시작하기' : '다음'}{!isLast ? <ArrowRight size={17} /> : null}</button>
+        <footer className="onboarding-actions single">
+          <button className="onboarding-next" type="button" onClick={onComplete}>확인했어요</button>
         </footer>
       </section>
     </div>
