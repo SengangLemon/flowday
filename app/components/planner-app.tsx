@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   BarChart3,
@@ -11,11 +12,12 @@ import {
   ChevronRight,
   Circle,
   Clock3,
+  Cloud,
+  CloudOff,
   Command,
   Edit3,
   Focus,
   GripVertical,
-  HardDrive,
   GitBranch,
   Inbox,
   LayoutGrid,
@@ -33,6 +35,7 @@ import {
 } from 'lucide-react';
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
 import { usePlanner } from '../hooks/use-planner';
+import { createClient } from '../lib/supabase/client';
 import {
   createEmptyGoal,
   createEmptyScheduleBlock,
@@ -732,8 +735,11 @@ function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
   );
 }
 
-export function PlannerApp() {
-  const planner = usePlanner();
+type PlannerAppProps = { userId: string; userEmail: string };
+
+export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
+  const router = useRouter();
+  const planner = usePlanner(userId);
   const [active, setActive] = useState<PlannerView>('habit');
   const [selectedDate, setSelectedDate] = useState('');
   const [editor, setEditor] = useState<EditorState>(null);
@@ -818,6 +824,22 @@ export function PlannerApp() {
     if (task) planner.upsertTask({ ...task, quadrant });
   }
 
+  async function signOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace('/login');
+    router.refresh();
+  }
+
+  const syncLabel = {
+    loading: '클라우드 연결 중',
+    saving: '변경사항 저장 중',
+    synced: '모든 기기와 동기화됨',
+    offline: '오프라인 · 이 기기에 저장됨',
+    error: '클라우드 연결을 확인해주세요',
+  }[planner.syncStatus];
+  const SyncIcon = planner.syncStatus === 'error' || planner.syncStatus === 'offline' ? CloudOff : Cloud;
+
   if (!planner.ready || !activeDate) return <div className="app-loading"><span><Image src="/flowday-icon-192.png" width={48} height={48} alt="" priority /></span><strong>Flowday</strong><i /></div>;
 
   return (
@@ -826,12 +848,12 @@ export function PlannerApp() {
         <button className="app-brand" onClick={() => setActive('habit')}><span><Image src="/flowday-icon-192.png" width={33} height={33} alt="" priority /></span><strong>Flowday</strong></button>
         <nav>{NAV_ITEMS.map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => setActive(id)}><Icon size={18} /><span>{label}</span>{id === 'inbox' ? <b>{planner.tasks.filter((task) => !task.start && !task.completed).length}</b> : null}</button>)}</nav>
         <section className="sidebar-projects"><header><span>프로젝트</span><Plus size={14} /></header>{PROJECTS.map((project) => <button key={project.name}><i className={project.color} />{project.name}<span>{planner.tasks.filter((task) => task.project === project.name && !task.completed).length}</span></button>)}</section>
-        <footer><button onClick={() => setSettingsOpen(true)}><Settings2 size={18} />설정과 데이터</button><div className={`sync-state ${planner.saveError ? 'error' : ''}`}><HardDrive size={15} /><span>{planner.saveError ? '저장 공간을 확인해주세요' : planner.lastSavedAt ? '이 기기에 즉시 저장됨' : '이 기기에 저장됨'}</span></div></footer>
+        <footer><button onClick={() => setSettingsOpen(true)}><Settings2 size={18} />설정과 데이터</button><div className={`sync-state ${planner.saveError ? 'error' : ''}`}><SyncIcon size={15} /><span>{syncLabel}</span></div></footer>
       </aside>
 
       <section className="planner-main">
         <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div className="mobile-header-copy"><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><div className="mobile-header-actions"><button className="icon-button ghost" onClick={() => setSearchOpen(true)} aria-label="통합 검색"><Search size={19} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={20} /></button></div></header>
-        <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="이 기기 저장 상태"><HardDrive size={18} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={18} /></button></div></header>
+        <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label={`동기화 상태: ${syncLabel}`}><SyncIcon size={18} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={18} /></button></div></header>
 
         <div className="view-container">
           {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} scheduleBlocks={planner.scheduleBlocks} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} /> : null}
@@ -849,7 +871,7 @@ export function PlannerApp() {
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
-      {settingsOpen ? <SettingsSheet theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onSignOut={signOut} onClose={() => setSettingsOpen(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
     </main>
   );

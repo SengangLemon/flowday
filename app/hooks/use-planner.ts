@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createClient } from '../lib/supabase/client';
 import {
   dateKey,
   normalizeGoal,
@@ -22,7 +23,10 @@ const LEGACY_V5_BACKUP_STORAGE_KEY = 'flowday:planner:backup:v5';
 const LEGACY_V4_STORAGE_KEY = 'flowday:planner:v4';
 const LEGACY_V3_STORAGE_KEY = 'flowday:planner:v3';
 const LEGACY_V2_STORAGE_KEY = 'flowday:planner:v2';
+const MIGRATION_OWNER_KEY = 'flowday:planner:migration-owner:v6';
 const subscribeToHydration = () => () => undefined;
+
+export type PlannerSyncStatus = 'loading' | 'saving' | 'synced' | 'offline' | 'error';
 
 type StoredPlannerState = Omit<PlannerState, 'version'> & { version: 5 | 6 };
 
@@ -133,8 +137,26 @@ function parsePlannerState(value: unknown): PlannerState | null {
   return null;
 }
 
-function readStoredState(): PlannerState {
-  for (const key of [STORAGE_KEY, BACKUP_STORAGE_KEY, LEGACY_V5_STORAGE_KEY, LEGACY_V5_BACKUP_STORAGE_KEY, LEGACY_V4_STORAGE_KEY, LEGACY_V3_STORAGE_KEY, LEGACY_V2_STORAGE_KEY]) {
+function scopedKey(key: string, userId: string) {
+  return `${key}:${userId}`;
+}
+
+function readStoredState(userId: string): PlannerState {
+  const migrationOwner = window.localStorage.getItem(MIGRATION_OWNER_KEY);
+  const legacyKeys = !migrationOwner || migrationOwner === userId ? [
+    STORAGE_KEY,
+    BACKUP_STORAGE_KEY,
+    LEGACY_V5_STORAGE_KEY,
+    LEGACY_V5_BACKUP_STORAGE_KEY,
+    LEGACY_V4_STORAGE_KEY,
+    LEGACY_V3_STORAGE_KEY,
+    LEGACY_V2_STORAGE_KEY,
+  ] : [];
+  for (const key of [
+    scopedKey(STORAGE_KEY, userId),
+    scopedKey(BACKUP_STORAGE_KEY, userId),
+    ...legacyKeys,
+  ]) {
     try {
       const stored = window.localStorage.getItem(key);
       if (!stored) continue;
@@ -148,57 +170,254 @@ function readStoredState(): PlannerState {
   return defaultState();
 }
 
-export function usePlanner() {
-  const ready = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+export function usePlanner(userId: string) {
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [today] = useState(() => dateKey(new Date()));
+  const [supabase] = useState(() => createClient());
   const [initialState] = useState<PlannerState>(() => {
     if (typeof window === 'undefined') return defaultState();
-    return readStoredState();
+    return readStoredState(userId);
   });
   const [state, setState] = useState<PlannerState>(initialState);
   const stateRef = useRef(initialState);
+  const [cloudReady, setCloudReady] = useState(false);
+  const cloudReadyRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const revisionRef = useRef(0);
+  const dirtyRef = useRef(false);
+  const pullingRef = useRef(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
-  const [saveError, setSaveError] = useState(false);
+  const [localSaveError, setLocalSaveError] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<PlannerSyncStatus>('loading');
+  const ready = hydrated && cloudReady;
 
-  const persist = useCallback((next: PlannerState) => {
+  const persistLocal = useCallback((next: PlannerState) => {
     if (typeof window === 'undefined') return;
     const serialized = JSON.stringify(next);
     try {
-      window.localStorage.setItem(STORAGE_KEY, serialized);
-      setLastSavedAt(Date.now());
-      setSaveError(false);
+      window.localStorage.setItem(scopedKey(STORAGE_KEY, userId), serialized);
+      if (!window.localStorage.getItem(MIGRATION_OWNER_KEY)) {
+        window.localStorage.setItem(MIGRATION_OWNER_KEY, userId);
+      }
+      setLocalSaveError(false);
       try {
-        window.localStorage.setItem(BACKUP_STORAGE_KEY, serialized);
+        window.localStorage.setItem(scopedKey(BACKUP_STORAGE_KEY, userId), serialized);
       } catch {
         // The primary copy is already safe; backup remains best-effort.
       }
     } catch {
-      setSaveError(true);
+      setLocalSaveError(true);
     }
-  }, []);
+  }, [userId]);
+
+  const scheduleCloudSave = useCallback((next: PlannerState) => {
+    if (!cloudReadyRef.current) return;
+    dirtyRef.current = true;
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    const revision = Math.max(Date.now(), revisionRef.current + 1);
+    revisionRef.current = revision;
+    setSyncStatus(navigator.onLine ? 'saving' : 'offline');
+
+    saveTimerRef.current = window.setTimeout(async () => {
+      saveTimerRef.current = null;
+      if (!navigator.onLine) {
+        setSyncStatus('offline');
+        return;
+      }
+      const savedAt = new Date().toISOString();
+      const { error } = await supabase.from('planner_documents').upsert({
+        user_id: userId,
+        state: next,
+        revision,
+        updated_at: savedAt,
+      }, { onConflict: 'user_id' });
+
+      if (error) {
+        setSyncStatus('error');
+        return;
+      }
+      if (revisionRef.current === revision) {
+        dirtyRef.current = false;
+        setSyncStatus('synced');
+      }
+      setLastSavedAt(new Date(savedAt).getTime());
+    }, 650);
+  }, [supabase, userId]);
 
   const commit = useCallback((update: (current: PlannerState) => PlannerState) => {
     const next = update(stateRef.current);
     stateRef.current = next;
     setState(next);
-    persist(next);
-  }, [persist]);
+    persistLocal(next);
+    scheduleCloudSave(next);
+  }, [persistLocal, scheduleCloudSave]);
 
   useEffect(() => {
-    if (ready) persist(stateRef.current);
-  }, [persist, ready]);
+    let cancelled = false;
+
+    async function loadCloudState() {
+      setSyncStatus('loading');
+      const { data, error } = await supabase
+        .from('planner_documents')
+        .select('state, revision, updated_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) {
+        cloudReadyRef.current = true;
+        setCloudReady(true);
+        setSyncStatus(navigator.onLine ? 'error' : 'offline');
+        return;
+      }
+
+      if (data) {
+        const cloudState = parsePlannerState(data.state);
+        if (cloudState) {
+          stateRef.current = cloudState;
+          setState(cloudState);
+          persistLocal(cloudState);
+          revisionRef.current = Number(data.revision) || 0;
+          dirtyRef.current = false;
+          setLastSavedAt(new Date(data.updated_at).getTime());
+        } else {
+          cloudReadyRef.current = true;
+          setCloudReady(true);
+          setSyncStatus('error');
+          return;
+        }
+      } else {
+        const revision = Date.now();
+        const savedAt = new Date().toISOString();
+        const { error: createError } = await supabase.from('planner_documents').insert({
+          user_id: userId,
+          state: stateRef.current,
+          revision,
+          updated_at: savedAt,
+        });
+        if (cancelled) return;
+        if (createError) {
+          cloudReadyRef.current = true;
+          setCloudReady(true);
+          setSyncStatus('error');
+          return;
+        }
+        revisionRef.current = revision;
+        dirtyRef.current = false;
+        setLastSavedAt(new Date(savedAt).getTime());
+      }
+
+      cloudReadyRef.current = true;
+      setCloudReady(true);
+      setSyncStatus('synced');
+    }
+
+    void loadCloudState();
+    return () => {
+      cancelled = true;
+      cloudReadyRef.current = false;
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [persistLocal, supabase, userId]);
 
   useEffect(() => {
     function syncFromAnotherTab(event: StorageEvent) {
-      if (event.key !== STORAGE_KEY && event.key !== BACKUP_STORAGE_KEY) return;
-      const next = readStoredState();
+      const primaryKey = scopedKey(STORAGE_KEY, userId);
+      const backupKey = scopedKey(BACKUP_STORAGE_KEY, userId);
+      if (event.key !== primaryKey && event.key !== backupKey) return;
+      const next = readStoredState(userId);
       stateRef.current = next;
       setState(next);
-      setSaveError(false);
+      setLocalSaveError(false);
+      scheduleCloudSave(next);
     }
     window.addEventListener('storage', syncFromAnotherTab);
     return () => window.removeEventListener('storage', syncFromAnotherTab);
-  }, []);
+  }, [scheduleCloudSave, userId]);
+
+  useEffect(() => {
+    async function online() {
+      if (dirtyRef.current) {
+        scheduleCloudSave(stateRef.current);
+        return;
+      }
+      if (pullingRef.current) return;
+
+      pullingRef.current = true;
+      setSyncStatus('loading');
+      try {
+        const { data, error } = await supabase
+          .from('planner_documents')
+          .select('state, revision, updated_at')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) {
+          setSyncStatus('error');
+          return;
+        }
+        if (!data) {
+          scheduleCloudSave(stateRef.current);
+          return;
+        }
+        const revision = Number(data.revision) || 0;
+        const next = parsePlannerState(data.state);
+        if (next && revision > revisionRef.current) {
+          revisionRef.current = revision;
+          stateRef.current = next;
+          setState(next);
+          persistLocal(next);
+          setLastSavedAt(new Date(data.updated_at).getTime());
+        }
+        setSyncStatus('synced');
+      } finally {
+        pullingRef.current = false;
+      }
+    }
+    function offline() {
+      setSyncStatus('offline');
+    }
+    function visible() {
+      if (document.visibilityState === 'visible' && navigator.onLine) void online();
+    }
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    window.addEventListener('focus', online);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+      window.removeEventListener('focus', online);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [persistLocal, scheduleCloudSave, supabase, userId]);
+
+  useEffect(() => {
+    if (!cloudReady) return;
+    const channel = supabase
+      .channel(`planner-document-${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'planner_documents',
+        filter: `user_id=eq.${userId}`,
+      }, (payload) => {
+        const remote = payload.new as { state?: unknown; revision?: number; updated_at?: string };
+        const revision = Number(remote.revision) || 0;
+        if (revision <= revisionRef.current) return;
+        const next = parsePlannerState(remote.state);
+        if (!next) return;
+        revisionRef.current = revision;
+        dirtyRef.current = false;
+        stateRef.current = next;
+        setState(next);
+        persistLocal(next);
+        setLastSavedAt(remote.updated_at ? new Date(remote.updated_at).getTime() : Date.now());
+        setSyncStatus('synced');
+      })
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [cloudReady, persistLocal, supabase, userId]);
 
   const { tasks, goals, scheduleBlocks, theme } = state;
 
@@ -342,7 +561,7 @@ export function usePlanner() {
       const next = parsePlannerState(JSON.parse(raw));
       if (!next) return { ok: false as const, message: 'Flowday 백업 파일 형식을 확인해주세요.' };
       try {
-        window.localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(stateRef.current));
+        window.localStorage.setItem(scopedKey(RECOVERY_STORAGE_KEY, userId), JSON.stringify(stateRef.current));
       } catch {
         // Import can continue in memory even when recovery storage is unavailable.
       }
@@ -351,31 +570,31 @@ export function usePlanner() {
     } catch {
       return { ok: false as const, message: '파일을 읽을 수 없습니다. JSON 백업 파일인지 확인해주세요.' };
     }
-  }, [commit]);
+  }, [commit, userId]);
 
   const restoreRecovery = useCallback(() => {
     try {
-      const stored = window.localStorage.getItem(RECOVERY_STORAGE_KEY);
+      const stored = window.localStorage.getItem(scopedKey(RECOVERY_STORAGE_KEY, userId));
       if (!stored) return { ok: false as const, message: '되돌릴 데이터가 없습니다.' };
       const previous = parsePlannerState(JSON.parse(stored));
       if (!previous) return { ok: false as const, message: '복구 데이터가 손상되었습니다.' };
       const current = stateRef.current;
-      window.localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(current));
+      window.localStorage.setItem(scopedKey(RECOVERY_STORAGE_KEY, userId), JSON.stringify(current));
       commit(() => previous);
       return { ok: true as const, message: '직전 데이터로 되돌렸습니다.' };
     } catch {
       return { ok: false as const, message: '복구 저장소를 사용할 수 없습니다.' };
     }
-  }, [commit]);
+  }, [commit, userId]);
 
   const resetPlanner = useCallback(() => {
     try {
-      window.localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(stateRef.current));
+      window.localStorage.setItem(scopedKey(RECOVERY_STORAGE_KEY, userId), JSON.stringify(stateRef.current));
     } catch {
       // Reset remains available even when recovery storage is unavailable.
     }
     commit(() => defaultState());
-  }, [commit]);
+  }, [commit, userId]);
 
   const todayTasks = useMemo(() => tasksForDate(tasks, today), [tasks, today]);
   const completedToday = useMemo(
@@ -392,7 +611,8 @@ export function usePlanner() {
     scheduleBlocks,
     theme,
     lastSavedAt,
-    saveError,
+    saveError: localSaveError || syncStatus === 'error',
+    syncStatus,
     completedToday,
     upsertTask,
     deleteTask,

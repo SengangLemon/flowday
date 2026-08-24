@@ -7,30 +7,37 @@ import {
   DatabaseBackup,
   Download,
   FileUp,
+  LoaderCircle,
+  LogOut,
   MonitorSmartphone,
   Moon,
   RotateCcw,
   ShieldCheck,
   Sun,
   Trash2,
+  UserRound,
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { Theme } from '../lib/planner';
+import type { PlannerSyncStatus } from '../hooks/use-planner';
 
 type OperationResult = { ok: boolean; message: string };
 
 type SettingsSheetProps = {
+  userEmail: string;
   theme: Theme;
   counts: { tasks: number; goals: number; blocks: number };
   lastSavedAt: number | null;
   saveError: boolean;
+  syncStatus: PlannerSyncStatus;
   onThemeChange: (theme: Theme) => void;
   onExport: () => string;
   onImport: (raw: string) => OperationResult;
   onRestore: () => OperationResult;
   onReset: () => void;
+  onSignOut: () => Promise<void>;
   onClose: () => void;
 };
 
@@ -40,18 +47,22 @@ const THEMES: { id: Theme; label: string; description: string; icon: typeof Sun 
   { id: 'dark', label: '어둡게', description: '야간 집중', icon: Moon },
 ];
 
-export function SettingsSheet({ theme, counts, lastSavedAt, saveError, onThemeChange, onExport, onImport, onRestore, onReset, onClose }: SettingsSheetProps) {
+export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, onThemeChange, onExport, onImport, onRestore, onReset, onSignOut, onClose }: SettingsSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<{ name: string; raw: string } | null>(null);
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [canRestore, setCanRestore] = useState(false);
-  const savedLabel = saveError
-    ? '저장 공간을 확인해주세요'
-    : lastSavedAt
-      ? `${new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' }).format(lastSavedAt)} 저장됨`
-      : '이 기기에 저장됨';
+  const [signingOut, setSigningOut] = useState(false);
+  const savedTime = lastSavedAt ? new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' }).format(lastSavedAt) : null;
+  const savedLabel = {
+    loading: '클라우드 연결 중',
+    saving: '변경사항 저장 중',
+    synced: savedTime ? `${savedTime} 모든 기기에 저장됨` : '모든 기기와 동기화됨',
+    offline: '오프라인 · 이 기기에 안전하게 보관 중',
+    error: '클라우드 연결을 확인해주세요',
+  }[syncStatus];
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -129,8 +140,13 @@ export function SettingsSheet({ theme, counts, lastSavedAt, saveError, onThemeCh
 
         <div className="settings-scroll">
           <section className={`storage-status ${saveError ? 'error' : ''}`}>
-            <span>{saveError ? <CloudOff size={19} /> : <ShieldCheck size={19} />}</span>
-            <div><strong>{savedLabel}</strong><p>현재 데이터는 이 브라우저에만 저장됩니다. 중요한 변경 뒤에는 백업 파일을 내려받아 보관해주세요.</p></div>
+            <span>{saveError || syncStatus === 'offline' ? <CloudOff size={19} /> : <ShieldCheck size={19} />}</span>
+            <div><strong>{savedLabel}</strong><p>변경사항은 이 기기에 즉시 보관되고, 연결되면 로그인한 모든 기기에 자동으로 동기화됩니다.</p></div>
+          </section>
+
+          <section className="settings-section account-section">
+            <header><div><strong>내 계정</strong><p>이 계정으로 계획과 완료 기록을 기기 간에 이어갑니다.</p></div><UserRound size={19} /></header>
+            <div className="account-row"><span><UserRound size={17} /></span><div><small>로그인 이메일</small><strong>{userEmail || 'Flowday 사용자'}</strong></div><button type="button" disabled={signingOut} onClick={async () => { setSigningOut(true); await onSignOut(); }}>{signingOut ? <LoaderCircle className="spin" size={16} /> : <LogOut size={16} />}로그아웃</button></div>
           </section>
 
           <section className="settings-section">
@@ -145,7 +161,7 @@ export function SettingsSheet({ theme, counts, lastSavedAt, saveError, onThemeCh
           </section>
 
           <section className="settings-section">
-            <header><div><strong>데이터 백업</strong><p>계정 동기화 전에도 내 기록을 직접 보관하고 복구할 수 있습니다.</p></div><DatabaseBackup size={19} /></header>
+            <header><div><strong>데이터 백업</strong><p>클라우드 동기화와 별도로 내 기록을 파일로 보관하고 복구할 수 있습니다.</p></div><DatabaseBackup size={19} /></header>
             <div className="data-counts"><span><b>{counts.tasks}</b>할 일</span><span><b>{counts.goals}</b>계획</span><span><b>{counts.blocks}</b>시간 블록</span></div>
             <div className="settings-actions">
               <button type="button" onClick={handleExport}><Download size={17} /><span><strong>백업 내보내기</strong><small>JSON 파일로 안전하게 보관</small></span></button>
