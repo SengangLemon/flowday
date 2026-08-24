@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ArrowDown,
   ArrowRight,
   CalendarDays,
   Check,
@@ -91,10 +92,10 @@ function MenuIntroVisual({ view, label }: { view: PlannerView; label: string }) 
   if (view === 'plan') {
     return (
       <div className="menu-intro-visual plan-visual" role="img" aria-label={label}>
-        <div className="intro-goal-tree">
-          <span className="goal-node root">3Y</span><i className="goal-line one" /><span className="goal-node year">1Y</span><i className="goal-line two" /><span className="goal-node quarter">3M</span><i className="goal-line three" /><span className="goal-node today">TODAY</span>
+        <div className="intro-goal-chain">
+          <span className="root">3Y</span><i /><span>1Y</span><i /><span>3M</span><i /><span className="today">TODAY</span>
         </div>
-        <ArrowRight className="intro-flow-arrow" size={20} />
+        <ArrowDown className="intro-plan-down" size={18} />
         <div className="intro-lawn">{LAWN_CELLS.map((level, index) => <i className={`level-${level}`} key={`${level}-${index}`} />)}</div>
       </div>
     );
