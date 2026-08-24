@@ -128,7 +128,7 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
         <header className="sheet-header">
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
           <div>
-            <span className="overline">{isNew ? 'NEW EXECUTION' : 'EXECUTION DETAILS'}</span>
+            <span className="overline">{isNew ? '새 실행' : '실행 상세'}</span>
             <h2 id="task-sheet-title">{isNew ? '새 실행 만들기' : '실행 수정하기'}</h2>
           </div>
           <button className="save-icon-button" type="submit" aria-label="저장"><Check size={19} /></button>

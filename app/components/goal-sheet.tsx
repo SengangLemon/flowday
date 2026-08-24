@@ -60,7 +60,7 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
         <div className="sheet-handle" aria-hidden="true" />
         <header className="sheet-header">
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
-          <div><span className="overline">{isNew ? 'NEW PLAN' : 'PLAN DETAILS'}</span><h2 id="goal-sheet-title">{isNew ? (isRoot ? '새 계획 만들기' : '하위 계획 만들기') : '계획 수정하기'}</h2></div>
+          <div><span className="overline">{isNew ? '새 계획' : '계획 상세'}</span><h2 id="goal-sheet-title">{isNew ? (isRoot ? '새 계획 만들기' : '하위 계획 만들기') : '계획 수정하기'}</h2></div>
           <button className="save-icon-button" type="submit" aria-label="저장"><Check size={19} /></button>
         </header>
 

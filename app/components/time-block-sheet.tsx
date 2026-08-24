@@ -61,7 +61,7 @@ export function TimeBlockSheet({ block: initialBlock, isNew, onClose, onSave, on
         <div className="sheet-handle" aria-hidden="true" />
         <header className="sheet-header">
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
-          <div><span className="overline">TIME BLOCK</span><h2 id="time-block-sheet-title">{isNew ? '나의 시간 블록 만들기' : '시간 블록 수정하기'}</h2></div>
+          <div><span className="overline">시간 블록</span><h2 id="time-block-sheet-title">{isNew ? '나의 시간 블록 만들기' : '시간 블록 수정하기'}</h2></div>
           <button className="save-icon-button" type="submit" aria-label="저장"><Check size={19} /></button>
         </header>
 

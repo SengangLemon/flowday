@@ -123,7 +123,7 @@ export function SettingsSheet({ theme, counts, lastSavedAt, saveError, onThemeCh
     <div className="settings-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={dialogRef} className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" onKeyDown={keepFocusInside}>
         <header className="settings-header">
-          <div><span className="overline">FLOWDAY SETTINGS</span><h2 id="settings-title">설정과 데이터</h2><p>내 계획을 안전하게 관리하고 앱 환경을 정리합니다.</p></div>
+          <div><span className="overline">설정</span><h2 id="settings-title">설정과 데이터</h2><p>내 계획을 안전하게 관리하고 앱 환경을 정리합니다.</p></div>
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="설정 닫기"><X size={20} /></button>
         </header>
 

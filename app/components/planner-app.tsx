@@ -128,7 +128,7 @@ function QuickAdd({ selectedDate, onAdd, compact = false }: QuickAddProps) {
   return (
     <form className={`quick-capture ${compact ? 'compact' : ''}`} onSubmit={submit}>
       <Plus size={19} />
-      <input value={value} onChange={(event) => setValue(event.target.value)} placeholder={compact ? '할 일 빠르게 추가' : '할 일 추가 · 14:00 #프로젝트 p1'} aria-label="빠른 할 일 추가" />
+      <input value={value} onChange={(event) => setValue(event.target.value)} placeholder={compact ? '할 일 빠르게 추가' : '할 일을 입력하세요 · 14:00 #프로젝트 p1'} aria-label="빠른 할 일 추가" />
       <button type="submit" aria-label="추가"><ArrowRight size={17} /></button>
     </form>
   );
@@ -198,8 +198,12 @@ function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, on
     <div className="today-view habit-view">
       <WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />
       <section className="day-hero">
-        <div><span className="overline">{selectedDate === today ? 'DAILY RHYTHM' : 'SELECTED DAY'}</span><h1>{formatDateLabel(selectedDate)}</h1><p>{timed.length ? '오늘의 흐름을 하나씩 실행해보세요.' : '인박스의 할 일을 가져오거나 새 습관을 만들어보세요.'}</p></div>
-        {timed.length ? <div className="day-progress"><span>{completed} / {timed.length} 완료</span><div><i style={{ width: `${completion}%` }} /></div></div> : null}
+        <div>
+          <span className="overline">{selectedDate === today ? '오늘의 리듬' : '선택한 날짜'}</span>
+          <h1>{formatDateLabel(selectedDate)}</h1>
+          <p>{timed.length ? '오늘의 흐름을 하나씩 실행해보세요.' : '인박스의 할 일을 가져오거나 새 습관을 만들어보세요.'}</p>
+          {timed.length ? <div className="day-progress"><span>오늘 진행</span><div><i style={{ width: `${completion}%` }} /></div><strong>{completed}/{timed.length}</strong></div> : null}
+        </div>
       </section>
 
       <section className="habit-inbox-callout">
@@ -210,7 +214,7 @@ function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, on
       <TimeBlockDesigner blocks={scheduleBlocks} onNew={onNewScheduleBlock} onEdit={onEditScheduleBlock} onUse={onUseScheduleBlock} />
 
       <section className="timeline-section">
-        <header className="section-heading"><div><span className="overline">HABIT TIMELINE</span><h2>습관 타임라인</h2></div><button onClick={() => onNew(selectedDate, '09:00')}><Plus size={16} />새 습관</button></header>
+        <header className="section-heading"><div><span className="overline">오늘 타임라인</span><h2>습관과 실행</h2></div><button onClick={() => onNew(selectedDate, '09:00')}><Plus size={16} />새 습관</button></header>
         <div className="timeline-list">
           {timed.length ? timed.map((task, index) => {
             const previous = timed[index - 1];
@@ -319,7 +323,7 @@ function InboxView({ today, tasks, onAdd, onNew, onEdit, onToggle, onMoveQuadran
   const filtered = filter === '전체' ? baseTasks : baseTasks.filter((task) => task.project === filter);
   return (
     <div className="content-view inbox-view">
-      <header className="view-intro"><div><span className="overline">CAPTURE & DECIDE</span><h1>인박스</h1><p>오늘 할 일, 아직 배치하지 않은 할 일, 아이젠하워 우선순위를 한곳에서 관리합니다.</p></div><div className="inbox-header-actions"><div className="segmented-control inbox-mode-control"><button className={mode === 'today' ? 'active' : ''} onClick={() => setMode('today')}><CheckCircle2 size={15} />오늘 할 일</button><button className={mode === 'inbox' ? 'active' : ''} onClick={() => setMode('inbox')}><Inbox size={15} />인박스</button><button className={mode === 'matrix' ? 'active' : ''} onClick={() => setMode('matrix')}><LayoutGrid size={15} />아이젠하워</button></div><button className="primary-button desktop-only" onClick={() => onNew(today, null)}><Plus size={17} />할 일 추가</button></div></header>
+      <header className="view-intro"><div><span className="overline">빠르게 기록하고 결정</span><h1>인박스</h1><p>오늘 할 일, 아직 배치하지 않은 할 일, 아이젠하워 우선순위를 한곳에서 관리합니다.</p></div><div className="inbox-header-actions"><div className="segmented-control inbox-mode-control"><button className={mode === 'today' ? 'active' : ''} onClick={() => setMode('today')}><CheckCircle2 size={15} />오늘 할 일</button><button className={mode === 'inbox' ? 'active' : ''} onClick={() => setMode('inbox')}><Inbox size={15} />인박스</button><button className={mode === 'matrix' ? 'active' : ''} onClick={() => setMode('matrix')}><LayoutGrid size={15} />아이젠하워</button></div><button className="primary-button desktop-only" onClick={() => onNew(today, null)}><Plus size={17} />할 일 추가</button></div></header>
       <QuickAdd selectedDate={today} onAdd={onAdd} />
       <div className="project-filter-row"><button className={filter === '전체' ? 'active' : ''} onClick={() => setFilter('전체')}>전체 <span>{baseTasks.length}</span></button>{PROJECTS.map((project) => <button className={filter === project.name ? 'active' : ''} onClick={() => setFilter(project.name)} key={project.name}><i className={project.color} />{project.name}</button>)}</div>
       {mode === 'today' ? <TaskListPanel tasks={filtered} emptyTitle="오늘 할 일이 없어요" emptyDescription="오늘 실행할 일을 추가하면 이곳과 계획 화면에 함께 표시됩니다." emptyAction="오늘 할 일 추가" onNew={() => onNew(today, null)} onEdit={onEdit} onToggle={onToggle} onSchedule={(task) => onSchedule(task, today)} /> : null}
@@ -503,7 +507,7 @@ function TimeBlockDesigner({ blocks, onNew, onEdit, onUse }: TimeBlockDesignerPr
   const ordered = [...blocks].sort((a, b) => a.start.localeCompare(b.start));
   return (
     <section className="time-block-designer">
-      <header><div><span className="overline">MY TIME SYSTEM</span><h2>나의 시간 블록</h2><p>정해진 예시 없이 05:00–08:00, 18:30–20:00처럼 내가 실제로 쓰는 시간대만 만드세요.</p></div><button onClick={onNew}><Plus size={15} />블록 추가</button></header>
+      <header><div><span className="overline">나의 시간 시스템</span><h2>시간 블록</h2><p>05:00–08:00, 18:30–20:00처럼 반복해서 쓰는 시간대를 만들어두세요.</p></div>{!ordered.length ? <button onClick={onNew}><Plus size={15} />블록 추가</button> : null}</header>
       {ordered.length ? <div className="time-block-grid">{ordered.map((block) => {
         const minutes = scheduleBlockDuration(block);
         const hours = Math.floor(minutes / 60);
@@ -519,7 +523,7 @@ function TimeBlockDesigner({ blocks, onNew, onEdit, onUse }: TimeBlockDesignerPr
             <button className="time-block-edit" onClick={() => onEdit(block)} aria-label={`${block.name} 수정`}><Pencil size={15} /></button>
           </article>
         );
-      })}</div> : <div className="time-block-empty"><Clock3 size={23} /><div><strong>아직 만든 시간 블록이 없어요</strong><p>처음부터 원하는 이름, 시작·종료 시간, 색상을 직접 정할 수 있습니다.</p></div><button onClick={onNew}><Plus size={15} />첫 블록 만들기</button></div>}
+      })}<button className="time-block-add-card" onClick={onNew}><Plus size={18} /><span><strong>새 시간 블록</strong><small>자주 쓰는 시간대를 추가하세요</small></span></button></div> : <div className="time-block-empty"><Clock3 size={23} /><div><strong>아직 만든 시간 블록이 없어요</strong><p>처음부터 원하는 이름, 시작·종료 시간, 색상을 직접 정할 수 있습니다.</p></div><button onClick={onNew}><Plus size={15} />첫 블록 만들기</button></div>}
     </section>
   );
 }
@@ -551,10 +555,10 @@ function PlanView({ today, goals, focusGoalId, onNewGoalTask, onNewGoal, onEditG
   const hasDailyPlans = selectedGoal ? goalScope(goals, selectedGoal.id).some((goal) => goal.daily) : false;
   return (
     <div className="content-view plan-view">
-      <header className="view-intro"><div><span className="overline">PLAN WORKSPACE</span><h1>계획 설계</h1><p>장기 방향을 중기 목표, 단기 실행안, 매일 체크할 행동으로 차근차근 세분화합니다.</p></div>{goals.length ? <button className="primary-button" onClick={() => onNewGoal(null)}><Plus size={16} />장기 계획 추가</button> : null}</header>
+      <header className="view-intro"><div><span className="overline">계획 구조</span><h1>계획 설계</h1><p>장기 방향을 중기 목표, 단기 실행안, 매일 체크할 행동으로 차근차근 세분화합니다.</p></div>{goals.length ? <button className="primary-button" onClick={() => onNewGoal(null)}><Plus size={16} />장기 계획 추가</button> : null}</header>
       <section className="plan-ladder" aria-label="계획 단계">{horizonCounts.map((horizon, index) => <article className={horizon.id} key={horizon.id}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{horizon.label} 계획</strong><small>{horizon.description}</small></div><b>{horizon.count}</b>{index < horizonCounts.length - 1 ? <ChevronRight size={15} /> : null}</article>)}</section>
-      {!goals.length ? <section className="plan-empty-card"><EmptyState icon={Target} title="첫 계획을 만들어보세요" description="예시 데이터 없이 완전히 빈 상태입니다. 기간을 자유롭게 정하고, 어느 단계에서든 하위 계획을 계속 추가할 수 있습니다." action="첫 계획 만들기" onAction={() => onNewGoal(null)} /></section> : <>
-        <section className="goal-root-section"><header><div><span className="overline">LONG-TERM DIRECTIONS</span><h2>장기 계획</h2></div><button onClick={() => onNewGoal(null)}><Plus size={15} />장기 계획</button></header><div className="goal-flow">{roots.map((goal) => {
+      {!goals.length ? <section className="plan-empty-card"><EmptyState icon={Target} title="첫 계획을 만들어보세요" description="예시 데이터 없이 완전히 빈 상태입니다. 기간을 자유롭게 정하고, 어느 단계에서든 하위 계획을 계속 추가할 수 있습니다." action="첫 계획 만들기" onAction={() => onNewGoal(null)} /></section> : <div className="plan-workspace">
+        <section className="goal-root-section"><header><div><span className="overline">계획 목록</span><h2>나의 계획</h2></div><button onClick={() => onNewGoal(null)}><Plus size={15} />계획 추가</button></header><div className="goal-flow">{roots.map((goal) => {
           const progress = goalProgress(goals, goal.id, today);
           const childCount = goalScope(goals, goal.id).length - 1;
           return <article className={`goal-root-card ${goal.color} ${breadcrumb[0]?.id === goal.id ? 'selected' : ''}`} key={goal.id}><button className="goal-root-main" onClick={() => setSelectedGoalId(goal.id)}><span className="goal-root-period">{goalCode(goal, goals, 0)} · {goalHorizonLabel(goal)} · {goal.period || '기간 미정'}</span><strong className="goal-root-title">{goal.title}</strong><small>{goal.detail || '완료 기준을 추가해보세요.'}</small>{progress === null ? <span className="goal-progress-empty">매일 실행 연결 전</span> : <span className="goal-progress"><span><i style={{ width: `${progress}%` }} /></span><b>{progress}%</b></span>}</button><footer><button className="goal-manage-button" onClick={() => setSelectedGoalId(goal.id)}><GitBranch size={14} />세분화 관리 · {childCount}</button><button onClick={() => onEditGoal(goal)}><Pencil size={14} />수정</button></footer></article>;
@@ -564,7 +568,7 @@ function PlanView({ today, goals, focusGoalId, onNewGoalTask, onNewGoal, onEditG
           <div className="goal-tree-card"><header><div><GitBranch size={18} /><span><strong>계획 구조</strong><small>A→B1…→C12처럼 단계와 개수 제한 없이 세분화합니다.</small></span></div></header><GoalBranch goal={selectedGoal} goals={goals} today={today} selectedId={selectedGoal.id} depth={Math.max(0, breadcrumb.length - 1)} onSelect={setSelectedGoalId} onEdit={onEditGoal} onAddChild={onNewGoal} onAddTask={onNewGoalTask} onToggleCheck={onToggleGoalCheck} /></div>
           <DailyPlanTracker goals={goals} goalId={selectedGoal.id} today={today} onToggle={onToggleGoalCheck} />
         </section> : null}
-      </>}
+      </div>}
     </div>
   );
 }
@@ -610,7 +614,7 @@ function CalendarView({ selectedDate, today, tasks, onDateChange, onNew, onEdit,
   }
   return (
     <div className="content-view calendar-view-v2">
-      <header className="view-intro calendar-intro"><div><span className="overline">CALENDAR</span><h1>{title}</h1><p>색상 실행 블록을 주·월·연 단위로 확인하고, 끌어서 날짜를 옮기거나 눌러 수정합니다.</p></div><div className="calendar-header-tools"><div className="segmented-control"><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>주간</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>월간</button><button className={mode === 'year' ? 'active' : ''} onClick={() => setMode('year')}>연간</button></div><div className="calendar-nav"><button onClick={() => move(-1)} aria-label="이전 기간"><ChevronLeft size={18} /></button><button onClick={() => onDateChange(today)}>오늘</button><button onClick={() => move(1)} aria-label="다음 기간"><ChevronRight size={18} /></button><button className="calendar-add" onClick={() => onNew(selectedDate, '09:00')} aria-label="선택한 날짜에 블록 추가"><Plus size={17} /></button></div></div></header>
+      <header className="view-intro calendar-intro"><div><span className="overline">일정</span><h1>{title}</h1><p>색상 실행 블록을 주·월·연 단위로 확인하고, 끌어서 날짜를 옮기거나 눌러 수정합니다.</p></div><div className="calendar-header-tools"><div className="segmented-control"><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>주간</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>월간</button><button className={mode === 'year' ? 'active' : ''} onClick={() => setMode('year')}>연간</button></div><div className="calendar-nav"><button onClick={() => move(-1)} aria-label="이전 기간"><ChevronLeft size={18} /></button><button onClick={() => onDateChange(today)}>오늘</button><button onClick={() => move(1)} aria-label="다음 기간"><ChevronRight size={18} /></button><button className="calendar-add" onClick={() => onNew(selectedDate, '09:00')} aria-label="선택한 날짜에 블록 추가"><Plus size={17} /></button></div></div></header>
       {mode === 'week' ? <><div className="calendar-week-desktop">{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); return <section className={date === today ? 'today' : ''} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const taskId = event.dataTransfer.getData('text/plain') || dragId; if (taskId) onMove(taskId, date); setDragId(null); }}><header><span>{formatDateLabel(date, { weekday: 'short' })}</span><strong>{Number(date.slice(-2))}</strong></header><div>{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="calendar" />)}<button className="calendar-day-add" onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={15} /></button></div></section>; })}</div><div className="calendar-week-mobile"><WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); return <section key={date} className={date === selectedDate ? 'selected' : ''} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const taskId = event.dataTransfer.getData('text/plain') || dragId; if (taskId) onMove(taskId, date); setDragId(null); }}><header><div><strong>{formatDateLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })}</strong><span>{dayTasks.length}개 블록</span></div><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={17} /></button></header>{dayTasks.length ? dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="list" />) : <p>비어 있는 날입니다.</p>}</section>; })}</div></> : null}
       {mode === 'month' ? <MonthCalendar selectedDate={selectedDate} today={today} tasks={tasks} onDateChange={onDateChange} onNew={onNew} onEdit={onEdit} onToggle={onToggle} onMove={onMove} onDragStartTask={setDragId} /> : null}
       {mode === 'year' ? <YearCalendar selectedDate={selectedDate} today={today} tasks={tasks} onDateChange={onDateChange} onNew={onNew} onEdit={onEdit} onToggle={onToggle} onMove={onMove} onDragStartTask={setDragId} onOpenMonth={() => setMode('month')} /> : null}
@@ -649,7 +653,7 @@ function FocusView({ today, tasks, selectedTaskId, onSelect, onComplete }: Focus
   const progress = Math.round((total - seconds) / total * 360);
   return (
     <div className="content-view focus-view-v2">
-      <header className="view-intro"><div><span className="overline">FOCUS MODE</span><h1>집중</h1><p>지금 필요한 한 가지에만 조용히 몰입하세요.</p></div></header>
+      <header className="view-intro"><div><span className="overline">집중 모드</span><h1>집중</h1><p>지금 필요한 한 가지에만 조용히 몰입하세요.</p></div></header>
       <div className="focus-layout">
         <section className="focus-main-card">
           <div className="segmented-control"><button className={mode === 'focus' ? 'active' : ''} onClick={() => setTimerMode('focus')}>집중 25분</button><button className={mode === 'break' ? 'active' : ''} onClick={() => setTimerMode('break')}>휴식 5분</button></div>
@@ -707,7 +711,7 @@ function CreateHub({ onClose, onTask, onBlock, onGoal }: CreateHubProps) {
     <div className="create-hub-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="create-hub" role="dialog" aria-modal="true" aria-labelledby="create-hub-title">
         <div className="sheet-handle" aria-hidden="true" />
-        <header><div><span className="overline">QUICK CREATE</span><h2 id="create-hub-title">무엇을 관리할까요?</h2><p>실행, 시간, 계획을 같은 흐름에서 연결합니다.</p></div><button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button></header>
+        <header><div><span className="overline">빠른 만들기</span><h2 id="create-hub-title">무엇을 관리할까요?</h2><p>실행, 시간, 계획을 같은 흐름에서 연결합니다.</p></div><button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button></header>
         <div className="create-hub-actions">{actions.map(({ title, description, icon: Icon, action }) => <button type="button" key={title} onClick={action}><span><Icon size={20} /></span><div><strong>{title}</strong><small>{description}</small></div><ArrowRight size={17} /></button>)}</div>
       </section>
     </div>
