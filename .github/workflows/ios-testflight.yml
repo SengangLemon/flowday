@@ -57,6 +57,7 @@ jobs:
           p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
       - name: Download App Store provisioning profile
+        id: provisioning
         if: inputs.upload_testflight
         uses: Apple-Actions/download-provisioning-profiles@v6
         with:
@@ -65,6 +66,15 @@ jobs:
           issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Verify signing configuration
+        if: inputs.upload_testflight
+        env:
+          DOWNLOADED_PROFILES: ${{ steps.provisioning.outputs.profiles }}
+        run: |
+          echo "Downloaded profiles: $DOWNLOADED_PROFILES"
+          security find-identity -v -p codesigning
+          ls -la "$HOME/Library/MobileDevice/Provisioning Profiles/"
 
       - name: Build unsigned simulator app
         if: ${{ !inputs.upload_testflight }}
@@ -98,6 +108,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            PROVISIONING_PROFILE="${{ fromJSON(steps.provisioning.outputs.profiles)[0].udid }}" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             archive 2>&1 | tee .build/archive.log
 
