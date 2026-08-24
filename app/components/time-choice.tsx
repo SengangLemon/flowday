@@ -6,7 +6,6 @@ type TimeChoiceProps = {
   label?: string;
 };
 
-const DISPLAY_HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const BASE_MINUTES = ['00', '15', '30', '45'];
 
 function parseTime(value: string) {
@@ -34,17 +33,20 @@ export function TimeChoice({ value, onChange, label = '시간' }: TimeChoiceProp
     <div className="time-choice">
       <header>
         <span>{label}</span>
-        <strong>{period === 'am' ? '오전' : '오후'} {displayHour}:{minute}</strong>
+        <strong>15분 단위</strong>
       </header>
-      <div className="time-period-options" role="group" aria-label={`${label} 오전 오후`}>
-        <button type="button" aria-pressed={period === 'am'} onClick={() => onChange(toTime('am', displayHour, minute))}>오전</button>
-        <button type="button" aria-pressed={period === 'pm'} onClick={() => onChange(toTime('pm', displayHour, minute))}>오후</button>
+      <div className="time-choice-display">
+        <div className="time-period-options" role="group" aria-label={`${label} 오전 오후`}>
+          <button type="button" aria-pressed={period === 'am'} onClick={() => onChange(toTime('am', displayHour, minute))}>오전</button>
+          <button type="button" aria-pressed={period === 'pm'} onClick={() => onChange(toTime('pm', displayHour, minute))}>오후</button>
+        </div>
+        <output aria-live="polite"><span>{String(displayHour).padStart(2, '0')}</span><i>:</i><span>{minute}</span></output>
       </div>
-      <div className="time-number-grid" role="group" aria-label={`${label} 시`}>
-        {DISPLAY_HOURS.map((option) => (
-          <button type="button" aria-pressed={displayHour === option} key={option} onClick={() => onChange(toTime(period, option, minute))}>{option}</button>
-        ))}
-      </div>
+      <label className="time-hour-slider">
+        <span>시간</span>
+        <input type="range" min="1" max="12" step="1" value={displayHour} onChange={(event) => onChange(toTime(period, Number(event.target.value), minute))} aria-label={`${label} 시`} aria-valuetext={`${displayHour}시`} />
+        <small><i>1</i><i>3</i><i>6</i><i>9</i><i>12</i></small>
+      </label>
       <div className="time-minute-options" role="group" aria-label={`${label} 분`}>
         {minutes.map((option) => (
           <button type="button" aria-pressed={minute === option} key={option} onClick={() => onChange(toTime(period, displayHour, option))}>{option}분</button>

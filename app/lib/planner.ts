@@ -5,6 +5,7 @@ export type Priority = 1 | 2 | 3 | 4;
 export type Quadrant = 'do' | 'schedule' | 'delegate' | 'delete';
 export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type GoalPeriod = string;
+export type GoalHorizon = 'long' | 'mid' | 'short' | 'daily';
 
 export type ScheduleBlock = {
   id: string;
@@ -65,7 +66,35 @@ export const PROJECTS: { name: string; color: TaskColor }[] = [
   { name: '생활', color: 'rose' },
 ];
 
-export const GOAL_PERIODS: GoalPeriod[] = ['오늘', '3일', '이번 주', '2주', '4주', '3개월', '6개월', '1년', '3년+'];
+export const GOAL_PERIODS: GoalPeriod[] = ['3년+', '1년', '6개월', '3개월', '4주', '2주', '이번 주', '3일', '오늘'];
+
+export const GOAL_HORIZONS: { id: GoalHorizon; label: string; description: string }[] = [
+  { id: 'long', label: '장기', description: '3년 이상 · 방향' },
+  { id: 'mid', label: '중기', description: '3개월–1년 · 목표' },
+  { id: 'short', label: '단기', description: '하루–4주 · 실행안' },
+  { id: 'daily', label: '매일', description: '체크 · 잔디 기록' },
+];
+
+export function goalHorizon(period: string, daily = false): GoalHorizon {
+  if (daily) return 'daily';
+  const normalized = period.replace(/\s/g, '');
+  const years = normalized.match(/(\d+)년/);
+  if (years) return Number(years[1]) >= 3 ? 'long' : 'mid';
+  const months = normalized.match(/(\d+)개월/);
+  if (months) return Number(months[1]) >= 3 ? 'mid' : 'short';
+  if (normalized.includes('장기')) return 'long';
+  return 'short';
+}
+
+export function nextGoalPeriod(parentPeriod?: string) {
+  if (!parentPeriod) return GOAL_PERIODS[0];
+  const index = GOAL_PERIODS.indexOf(parentPeriod);
+  if (index >= 0) return GOAL_PERIODS[Math.min(index + 1, GOAL_PERIODS.length - 1)];
+  const horizon = goalHorizon(parentPeriod);
+  if (horizon === 'long') return '1년';
+  if (horizon === 'mid') return '4주';
+  return '이번 주';
+}
 
 export const REPEAT_RULES: { value: RepeatRule; label: string; hint: string }[] = [
   { value: 'none', label: '반복 안 함', hint: '선택한 날짜에 한 번만 표시됩니다.' },
@@ -211,14 +240,26 @@ export function createEmptyScheduleBlock(start = '05:00', end = '08:00'): Schedu
   };
 }
 
-export function createEmptyGoal(parentId: string | null = null): PlanGoal {
+export function normalizeGoal(goal: PlanGoal): PlanGoal {
+  return {
+    ...goal,
+    parentId: typeof goal.parentId === 'string' ? goal.parentId : null,
+    title: typeof goal.title === 'string' ? goal.title : '',
+    detail: typeof goal.detail === 'string' ? goal.detail : '',
+    period: typeof goal.period === 'string' ? goal.period : '',
+    daily: Boolean(goal.daily),
+    checkins: Array.isArray(goal.checkins) ? [...new Set(goal.checkins.filter((date) => typeof date === 'string'))].sort() : [],
+  };
+}
+
+export function createEmptyGoal(parentId: string | null = null, parentPeriod?: string): PlanGoal {
   const now = Date.now();
   return {
     id: `goal-${now}-${Math.random().toString(36).slice(2, 7)}`,
     parentId,
     title: '',
     detail: '',
-    period: parentId ? '이번 주' : '1년',
+    period: parentId ? nextGoalPeriod(parentPeriod) : GOAL_PERIODS[0],
     color: 'sage',
     daily: false,
     checkins: [],

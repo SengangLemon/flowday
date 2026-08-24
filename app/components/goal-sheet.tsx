@@ -2,7 +2,7 @@
 
 import { AlignLeft, Check, GitBranch, Repeat2, Target, Trash2, X } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
-import { GOAL_PERIODS, PlanGoal, TaskColor } from '../lib/planner';
+import { goalHorizon, GOAL_HORIZONS, GOAL_PERIODS, PlanGoal, TaskColor } from '../lib/planner';
 
 type GoalSheetProps = {
   goal: PlanGoal;
@@ -24,6 +24,7 @@ const COLORS: { id: TaskColor; label: string }[] = [
 export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, onDelete }: GoalSheetProps) {
   const [goal, setGoal] = useState(initialGoal);
   const isRoot = goal.parentId === null;
+  const horizon = GOAL_HORIZONS.find((item) => item.id === goalHorizon(goal.period, goal.daily)) ?? GOAL_HORIZONS[2];
   const parentOptions = useMemo(() => {
     const descendants = new Set<string>();
     let changed = true;
@@ -71,11 +72,12 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
           <section className="sheet-section">
             <h3>계획 구조</h3>
             <div className="choice-block">
-              <header><span><Target size={16} />기간</span><strong>{goal.period || '직접 입력'}</strong></header>
+              <header><span><Target size={16} />기간</span><strong>{horizon.label} 계획 · {goal.period || '직접 입력'}</strong></header>
               <div className="choice-scroll" role="group" aria-label="계획 기간">
                 {GOAL_PERIODS.map((period) => <button type="button" aria-pressed={goal.period === period} value={period} key={period} onClick={() => update('period', period)}>{period}</button>)}
               </div>
               <label className="custom-period-field"><span>직접 입력</span><input value={goal.period} onChange={(event) => update('period', event.target.value)} placeholder="예: 5개월, 10일" aria-label="계획 기간 직접 입력" /></label>
+              <p className="goal-horizon-hint">{horizon.description} 단계입니다. 하위 계획을 만들면 다음 권장 기간이 자동으로 제안됩니다.</p>
             </div>
             <div className="choice-block goal-parent-choice">
               <header><span><GitBranch size={16} />상위 계획</span><strong>{parentOptions.find((item) => item.id === goal.parentId)?.title ?? '최상위 계획'}</strong></header>

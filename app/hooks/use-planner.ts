@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   dateKey,
+  normalizeGoal,
   normalizeTask,
   PlanGoal,
   PlannerState,
@@ -14,6 +15,7 @@ import {
 } from '../lib/planner';
 
 const STORAGE_KEY = 'flowday:planner:v5';
+const BACKUP_STORAGE_KEY = 'flowday:planner:backup:v5';
 const LEGACY_V4_STORAGE_KEY = 'flowday:planner:v4';
 const LEGACY_V3_STORAGE_KEY = 'flowday:planner:v3';
 const LEGACY_V2_STORAGE_KEY = 'flowday:planner:v2';
@@ -42,11 +44,17 @@ function userCreatedTasks(tasks: PlannerTask[]) {
 
 function readStoredState(): PlannerState {
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored) as PlannerState;
-      if (parsed.version === 5 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals) && Array.isArray(parsed.scheduleBlocks)) {
-        return { ...parsed, tasks: parsed.tasks.map(normalizeTask) };
+    for (const key of [STORAGE_KEY, BACKUP_STORAGE_KEY]) {
+      const stored = window.localStorage.getItem(key);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as PlannerState;
+          if (parsed.version === 5 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals) && Array.isArray(parsed.scheduleBlocks)) {
+            return { ...parsed, tasks: parsed.tasks.map(normalizeTask), goals: parsed.goals.map(normalizeGoal) };
+          }
+        } catch {
+          // Try the backup copy before falling back to legacy data.
+        }
       }
     }
 
@@ -57,7 +65,7 @@ function readStoredState(): PlannerState {
         return {
           version: 5,
           tasks: legacy.tasks.map(normalizeTask),
-          goals: legacy.goals,
+          goals: legacy.goals.map(normalizeGoal),
           scheduleBlocks: [],
           theme: legacy.theme ?? 'light',
         };
@@ -93,37 +101,70 @@ export function usePlanner() {
     if (typeof window === 'undefined') return defaultState();
     return readStoredState();
   });
-  const [tasks, setTasks] = useState<PlannerTask[]>(initialState.tasks);
-  const [goals, setGoals] = useState<PlanGoal[]>(initialState.goals);
-  const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>(initialState.scheduleBlocks);
-  const [theme, setThemeState] = useState<Theme>(initialState.theme);
+  const [state, setState] = useState<PlannerState>(initialState);
+  const stateRef = useRef(initialState);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [saveError, setSaveError] = useState(false);
+
+  const persist = useCallback((next: PlannerState) => {
+    if (typeof window === 'undefined') return;
+    const serialized = JSON.stringify(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, serialized);
+      setLastSavedAt(Date.now());
+      setSaveError(false);
+      try {
+        window.localStorage.setItem(BACKUP_STORAGE_KEY, serialized);
+      } catch {
+        // The primary copy is already safe; backup remains best-effort.
+      }
+    } catch {
+      setSaveError(true);
+    }
+  }, []);
+
+  const commit = useCallback((update: (current: PlannerState) => PlannerState) => {
+    const next = update(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+    persist(next);
+  }, [persist]);
 
   useEffect(() => {
-    if (!ready) return;
-    const next: PlannerState = { version: 5, tasks, goals, scheduleBlocks, theme };
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // Saving is best-effort; interactions continue to work in-memory.
+    if (ready) persist(stateRef.current);
+  }, [persist, ready]);
+
+  useEffect(() => {
+    function syncFromAnotherTab(event: StorageEvent) {
+      if (event.key !== STORAGE_KEY && event.key !== BACKUP_STORAGE_KEY) return;
+      const next = readStoredState();
+      stateRef.current = next;
+      setState(next);
+      setSaveError(false);
     }
-  }, [goals, ready, scheduleBlocks, tasks, theme]);
+    window.addEventListener('storage', syncFromAnotherTab);
+    return () => window.removeEventListener('storage', syncFromAnotherTab);
+  }, []);
+
+  const { tasks, goals, scheduleBlocks, theme } = state;
 
   const upsertTask = useCallback((task: PlannerTask) => {
-    setTasks((current) => {
+    commit((current) => {
       const normalized = normalizeTask({ ...task, updatedAt: Date.now() });
-      const exists = current.some((item) => item.id === normalized.id);
-      return exists
-        ? current.map((item) => item.id === normalized.id ? normalized : item)
-        : [...current, normalized];
+      const exists = current.tasks.some((item) => item.id === normalized.id);
+      const nextTasks = exists
+        ? current.tasks.map((item) => item.id === normalized.id ? normalized : item)
+        : [...current.tasks, normalized];
+      return { ...current, tasks: nextTasks };
     });
-  }, []);
+  }, [commit]);
 
   const deleteTask = useCallback((taskId: string) => {
-    setTasks((current) => current.filter((task) => task.id !== taskId));
-  }, []);
+    commit((current) => ({ ...current, tasks: current.tasks.filter((task) => task.id !== taskId) }));
+  }, [commit]);
 
   const toggleTask = useCallback((taskId: string, occurrenceDate?: string) => {
-    setTasks((current) => current.map((task) => {
+    commit((current) => ({ ...current, tasks: current.tasks.map((task) => {
       if (task.id !== taskId) return task;
       if (task.repeat !== 'none') {
         const date = occurrenceDate ?? today;
@@ -137,15 +178,15 @@ export function usePlanner() {
         };
       }
       return { ...task, completed: !task.completed, updatedAt: Date.now() };
-    }));
-  }, [today]);
+    }) }));
+  }, [commit, today]);
 
   const duplicateTask = useCallback((taskId: string) => {
-    setTasks((current) => {
-      const original = current.find((task) => task.id === taskId);
+    commit((current) => {
+      const original = current.tasks.find((task) => task.id === taskId);
       if (!original) return current;
       const now = Date.now();
-      return [...current, {
+      return { ...current, tasks: [...current.tasks, {
         ...original,
         id: `task-${now}-${Math.random().toString(36).slice(2, 7)}`,
         title: `${original.title} 복사본`,
@@ -154,45 +195,46 @@ export function usePlanner() {
         occurrenceDate: undefined,
         createdAt: now,
         updatedAt: now,
-      }];
+      }] };
     });
-  }, []);
+  }, [commit]);
 
   const moveTask = useCallback((taskId: string, date: string, start?: string | null) => {
-    setTasks((current) => current.map((task) => task.id === taskId
+    commit((current) => ({ ...current, tasks: current.tasks.map((task) => task.id === taskId
       ? { ...task, date, start: start === undefined ? task.start : start, updatedAt: Date.now() }
-      : task));
-  }, []);
+      : task) }));
+  }, [commit]);
 
   const upsertGoal = useCallback((goal: PlanGoal) => {
-    setGoals((current) => {
-      const saved = { ...goal, updatedAt: Date.now() };
-      const exists = current.some((item) => item.id === goal.id);
-      return exists
-        ? current.map((item) => item.id === goal.id ? saved : item)
-        : [...current, saved];
+    commit((current) => {
+      const saved = normalizeGoal({ ...goal, updatedAt: Date.now() });
+      const exists = current.goals.some((item) => item.id === goal.id);
+      const nextGoals = exists
+        ? current.goals.map((item) => item.id === goal.id ? saved : item)
+        : [...current.goals, saved];
+      return { ...current, goals: nextGoals };
     });
-  }, []);
+  }, [commit]);
 
   const deleteGoal = useCallback((goalId: string) => {
-    setGoals((current) => {
+    commit((current) => {
       const remove = new Set([goalId]);
       let changed = true;
       while (changed) {
         changed = false;
-        for (const goal of current) {
+        for (const goal of current.goals) {
           if (goal.parentId && remove.has(goal.parentId) && !remove.has(goal.id)) {
             remove.add(goal.id);
             changed = true;
           }
         }
       }
-      return current.filter((goal) => !remove.has(goal.id));
+      return { ...current, goals: current.goals.filter((goal) => !remove.has(goal.id)) };
     });
-  }, []);
+  }, [commit]);
 
   const toggleGoalCheck = useCallback((goalId: string, date: string) => {
-    setGoals((current) => current.map((goal) => {
+    commit((current) => ({ ...current, goals: current.goals.map((goal) => {
       if (goal.id !== goalId) return goal;
       const checked = goal.checkins.includes(date);
       return {
@@ -200,27 +242,27 @@ export function usePlanner() {
         checkins: checked ? goal.checkins.filter((item) => item !== date) : [...goal.checkins, date].sort(),
         updatedAt: Date.now(),
       };
-    }));
-  }, []);
+    }) }));
+  }, [commit]);
 
   const upsertScheduleBlock = useCallback((block: ScheduleBlock) => {
-    setScheduleBlocks((current) => {
+    commit((current) => {
       const saved = { ...block, updatedAt: Date.now() };
-      const exists = current.some((item) => item.id === block.id);
+      const exists = current.scheduleBlocks.some((item) => item.id === block.id);
       const next = exists
-        ? current.map((item) => item.id === block.id ? saved : item)
-        : [...current, saved];
-      return next.sort((a, b) => a.start.localeCompare(b.start));
+        ? current.scheduleBlocks.map((item) => item.id === block.id ? saved : item)
+        : [...current.scheduleBlocks, saved];
+      return { ...current, scheduleBlocks: next.sort((a, b) => a.start.localeCompare(b.start)) };
     });
-  }, []);
+  }, [commit]);
 
   const deleteScheduleBlock = useCallback((blockId: string) => {
-    setScheduleBlocks((current) => current.filter((block) => block.id !== blockId));
-  }, []);
+    commit((current) => ({ ...current, scheduleBlocks: current.scheduleBlocks.filter((block) => block.id !== blockId) }));
+  }, [commit]);
 
   const setTheme = useCallback((nextTheme: Theme) => {
-    setThemeState(nextTheme);
-  }, []);
+    commit((current) => ({ ...current, theme: nextTheme }));
+  }, [commit]);
 
   const todayTasks = useMemo(() => tasksForDate(tasks, today), [tasks, today]);
   const completedToday = useMemo(
@@ -236,6 +278,8 @@ export function usePlanner() {
     goals,
     scheduleBlocks,
     theme,
+    lastSavedAt,
+    saveError,
     completedToday,
     upsertTask,
     deleteTask,

@@ -40,6 +40,8 @@ import {
   createEmptyScheduleBlock,
   createEmptyTask,
   formatDateLabel,
+  goalHorizon,
+  GOAL_HORIZONS,
   minutesToTime,
   monthGridDates,
   parseQuickAdd,
@@ -181,9 +183,13 @@ type HabitViewProps = {
   onFocus: (taskId: string) => void;
   onMove: (taskId: string, date: string, start?: string | null) => void;
   onSchedule: (task: PlannerTask, date: string) => void;
+  scheduleBlocks: ScheduleBlock[];
+  onNewScheduleBlock: () => void;
+  onEditScheduleBlock: (block: ScheduleBlock) => void;
+  onUseScheduleBlock: (block: ScheduleBlock) => void;
 };
 
-function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, onToggle, onFocus, onMove, onSchedule }: HabitViewProps) {
+function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, onToggle, onFocus, onMove, onSchedule, scheduleBlocks, onNewScheduleBlock, onEditScheduleBlock, onUseScheduleBlock }: HabitViewProps) {
   const timed = useMemo(() => tasksForDate(tasks, selectedDate).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')), [tasks, selectedDate]);
   const inboxTasks = useMemo(() => tasks.filter((task) => !task.start && !task.completed).sort((a, b) => a.priority - b.priority), [tasks]);
   const completed = timed.filter((task) => task.completed).length;
@@ -202,6 +208,8 @@ function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, on
         <header><div><Inbox size={18} /><span><strong>인박스에서 가져오기</strong><small>할 일을 원하는 시간대의 블록으로 배치합니다.</small></span></div><b>{inboxTasks.length}</b></header>
         {inboxTasks.length ? <div className="habit-inbox-list">{inboxTasks.slice(0, 4).map((task) => <div key={task.id}><span className={`color-dot ${task.color}`} /><button onClick={() => onEdit(task)}><strong>{task.title}</strong><small>{task.project} · P{task.priority}</small></button><button onClick={() => onSchedule(task, selectedDate)}><Clock3 size={14} />배치</button></div>)}</div> : <p>인박스가 비어 있습니다. 먼저 할 일을 적어보세요.</p>}
       </section>
+
+      <TimeBlockDesigner blocks={scheduleBlocks} onNew={onNewScheduleBlock} onEdit={onEditScheduleBlock} onUse={onUseScheduleBlock} />
 
       <section className="timeline-section">
         <header className="section-heading"><div><span className="overline">HABIT TIMELINE</span><h2>습관 타임라인</h2></div><button onClick={() => onNew(selectedDate, '09:00')}><Plus size={16} />새 습관</button></header>
@@ -424,6 +432,36 @@ function GoalLawn({ goals, goalId, today }: GoalLawnProps) {
   );
 }
 
+function goalHorizonLabel(goal: PlanGoal) {
+  const horizon = goalHorizon(goal.period, goal.daily);
+  return GOAL_HORIZONS.find((item) => item.id === horizon)?.label ?? '단기';
+}
+
+type DailyPlanTrackerProps = {
+  goals: PlanGoal[];
+  goalId: string;
+  today: string;
+  onToggle: (goalId: string, date: string) => void;
+};
+
+function DailyPlanTracker({ goals, goalId, today, onToggle }: DailyPlanTrackerProps) {
+  const dailyGoals = goalScope(goals, goalId).filter((goal) => goal.daily);
+  const activityCount = goalActivityDates(goals, goalId, today).length;
+  if (!dailyGoals.length) {
+    return <section className="plan-daily-empty"><Sprout size={19} /><div><strong>아직 매일 실행할 계획이 없어요</strong><p>가장 작은 하위 계획을 수정해 ‘매일 체크’를 켜면 오늘 체크와 잔디 기록이 시작됩니다.</p></div></section>;
+  }
+  return (
+    <section className="goal-garden-card">
+      <header><div><Sprout size={19} /><span><strong>오늘의 잔디</strong><small>매일 실행 계획만 체크하고 실제 기록만 쌓습니다.</small></span></div><b>{dailyGoals.filter((goal) => goal.checkins.includes(today)).length}/{dailyGoals.length}</b></header>
+      <div className="daily-plan-list">{dailyGoals.map((goal) => {
+        const checked = goal.checkins.includes(today);
+        return <button className={checked ? 'checked' : ''} type="button" key={goal.id} onClick={() => onToggle(goal.id, today)}><span className={`color-dot ${goal.color}`} /><span><strong>{goal.title}</strong><small>{goal.period} · 오늘</small></span><CheckCircle2 size={18} /></button>;
+      })}</div>
+      {activityCount ? <GoalLawn goals={goals} goalId={goalId} today={today} /> : <p className="lawn-awaiting-copy">오늘 첫 체크를 하면 잔디가 나타납니다.</p>}
+    </section>
+  );
+}
+
 type GoalBranchProps = {
   goal: PlanGoal;
   goals: PlanGoal[];
@@ -443,7 +481,7 @@ function GoalBranch({ goal, goals, today, selectedId, depth = 0, onSelect, onEdi
   return (
     <div className="goal-branch" style={{ '--goal-depth': depth } as CSSProperties}>
       <article className={`goal-node ${goal.color} ${selectedId === goal.id ? 'selected' : ''}`}>
-        <button className="goal-node-main" onClick={() => onSelect(goal.id)}><span>{goalCode(goal, goals, depth)} · {goal.period || '기간 미정'}</span><strong>{goal.title}</strong><small>{goal.detail || '완료 기준을 추가해보세요.'}</small></button>
+        <button className="goal-node-main" onClick={() => onSelect(goal.id)}><span>{goalCode(goal, goals, depth)} · {goalHorizonLabel(goal)}</span><strong>{goal.title}</strong><small>{goal.period || '기간 미정'} · {goal.detail || '완료 기준을 추가해보세요.'}</small></button>
         <div className="goal-node-actions">
           {goal.daily ? <button className={`daily-check ${checked ? 'checked' : ''}`} onClick={() => onToggleCheck(goal.id, today)} aria-label={`${goal.title} 오늘 체크`}><CheckCircle2 size={15} />{checked ? '오늘 완료' : '오늘 체크'}</button> : null}
           <button onClick={() => onAddTask(goal.title)} aria-label="실행 블록 추가"><CalendarDays size={15} /></button>
@@ -488,50 +526,19 @@ function TimeBlockDesigner({ blocks, onNew, onEdit, onUse }: TimeBlockDesignerPr
   );
 }
 
-type PlanExecutionPanelProps = {
-  today: string;
-  tasks: PlannerTask[];
-  onNew: () => void;
-  onEdit: (task: PlannerTask) => void;
-  onToggle: (taskId: string, occurrenceDate?: string) => void;
-  onMoveQuadrant: (taskId: string, quadrant: Quadrant) => void;
-  onSchedule: (task: PlannerTask) => void;
-};
-
-function PlanExecutionPanel({ today, tasks, onNew, onEdit, onToggle, onMoveQuadrant, onSchedule }: PlanExecutionPanelProps) {
-  const [mode, setMode] = useState<'today' | 'matrix'>('today');
-  const todayTasks = useMemo(() => tasksForDate(tasks, today).sort((a, b) => Number(a.completed) - Number(b.completed) || (a.start ?? '99:99').localeCompare(b.start ?? '99:99') || a.priority - b.priority), [tasks, today]);
-  const activeTasks = useMemo(() => tasks.filter((task) => !task.completed).sort((a, b) => a.priority - b.priority), [tasks]);
-  return (
-    <section className="plan-execution-panel">
-      <header><div><span className="overline">PLAN TO ACTION</span><h2>오늘 실행</h2><p>장기 계획 옆에서 오늘 할 일과 아이젠하워 우선순위를 바로 확인합니다.</p></div><div className="segmented-control"><button className={mode === 'today' ? 'active' : ''} onClick={() => setMode('today')}><CheckCircle2 size={15} />오늘 할 일</button><button className={mode === 'matrix' ? 'active' : ''} onClick={() => setMode('matrix')}><LayoutGrid size={15} />아이젠하워</button></div></header>
-      {mode === 'today' ? <TaskListPanel tasks={todayTasks} emptyTitle="오늘 할 일이 없어요" emptyDescription="계획을 오늘의 한 가지 행동으로 옮겨보세요." emptyAction="오늘 할 일 추가" onNew={onNew} onEdit={onEdit} onToggle={onToggle} onSchedule={onSchedule} /> : <EisenhowerMatrix tasks={activeTasks} onEdit={onEdit} onToggle={onToggle} onMoveQuadrant={onMoveQuadrant} />}
-    </section>
-  );
-}
-
 type PlanViewProps = {
   today: string;
-  tasks: PlannerTask[];
   goals: PlanGoal[];
-  scheduleBlocks: ScheduleBlock[];
-  onNewTask: () => void;
-  onEditTask: (task: PlannerTask) => void;
-  onToggleTask: (taskId: string, occurrenceDate?: string) => void;
-  onMoveQuadrant: (taskId: string, quadrant: Quadrant) => void;
-  onScheduleTask: (task: PlannerTask) => void;
-  onNewScheduleBlock: () => void;
-  onEditScheduleBlock: (block: ScheduleBlock) => void;
-  onUseScheduleBlock: (block: ScheduleBlock) => void;
+  focusGoalId: string;
   onNewGoalTask: (goal: string) => void;
   onNewGoal: (parentId: string | null) => void;
   onEditGoal: (goal: PlanGoal) => void;
   onToggleGoalCheck: (goalId: string, date: string) => void;
 };
 
-function PlanView({ today, tasks, goals, scheduleBlocks, onNewTask, onEditTask, onToggleTask, onMoveQuadrant, onScheduleTask, onNewScheduleBlock, onEditScheduleBlock, onUseScheduleBlock, onNewGoalTask, onNewGoal, onEditGoal, onToggleGoalCheck }: PlanViewProps) {
-  const [selectedGoalId, setSelectedGoalId] = useState(() => goals[0]?.id ?? '');
-  const roots = goals.filter((goal) => goal.parentId === null);
+function PlanView({ today, goals, focusGoalId, onNewGoalTask, onNewGoal, onEditGoal, onToggleGoalCheck }: PlanViewProps) {
+  const [selectedGoalId, setSelectedGoalId] = useState(() => focusGoalId || goals[0]?.id || '');
+  const roots = goals.filter((goal) => goal.parentId === null).sort((a, b) => b.updatedAt - a.updatedAt);
   const selectedGoal = goals.find((goal) => goal.id === selectedGoalId) ?? roots[0] ?? goals[0];
   const breadcrumb = selectedGoal ? (() => {
     const items: PlanGoal[] = [];
@@ -542,22 +549,22 @@ function PlanView({ today, tasks, goals, scheduleBlocks, onNewTask, onEditTask, 
     }
     return items;
   })() : [];
-  const activityCount = selectedGoal ? goalActivityDates(goals, selectedGoal.id, today).length : 0;
+  const horizonCounts = GOAL_HORIZONS.map((horizon) => ({ ...horizon, count: goals.filter((goal) => goalHorizon(goal.period, goal.daily) === horizon.id).length }));
+  const hasDailyPlans = selectedGoal ? goalScope(goals, selectedGoal.id).some((goal) => goal.daily) : false;
   return (
     <div className="content-view plan-view">
-      <header className="view-intro"><div><span className="overline">GOAL SYSTEM</span><h1>계획</h1><p>기간과 단계 수에 제한 없이 큰 계획을 필요한 만큼 잘게 나눕니다.</p></div>{goals.length ? <button className="primary-button" onClick={() => onNewGoal(null)}><Plus size={16} />새 계획</button> : null}</header>
-      <TimeBlockDesigner blocks={scheduleBlocks} onNew={onNewScheduleBlock} onEdit={onEditScheduleBlock} onUse={onUseScheduleBlock} />
-      <PlanExecutionPanel today={today} tasks={tasks} onNew={onNewTask} onEdit={onEditTask} onToggle={onToggleTask} onMoveQuadrant={onMoveQuadrant} onSchedule={onScheduleTask} />
+      <header className="view-intro"><div><span className="overline">PLAN WORKSPACE</span><h1>계획 설계</h1><p>장기 방향을 중기 목표, 단기 실행안, 매일 체크할 행동으로 차근차근 세분화합니다.</p></div>{goals.length ? <button className="primary-button" onClick={() => onNewGoal(null)}><Plus size={16} />장기 계획 추가</button> : null}</header>
+      <section className="plan-ladder" aria-label="계획 단계">{horizonCounts.map((horizon, index) => <article className={horizon.id} key={horizon.id}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{horizon.label} 계획</strong><small>{horizon.description}</small></div><b>{horizon.count}</b>{index < horizonCounts.length - 1 ? <ChevronRight size={15} /> : null}</article>)}</section>
       {!goals.length ? <section className="plan-empty-card"><EmptyState icon={Target} title="첫 계획을 만들어보세요" description="예시 데이터 없이 완전히 빈 상태입니다. 기간을 자유롭게 정하고, 어느 단계에서든 하위 계획을 계속 추가할 수 있습니다." action="첫 계획 만들기" onAction={() => onNewGoal(null)} /></section> : <>
-        <section className="goal-root-section"><header><div><span className="overline">TOP LEVEL</span><h2>내 핵심 계획</h2></div><button onClick={() => onNewGoal(null)}><Plus size={15} />최상위 계획</button></header><div className="goal-flow">{roots.map((goal) => {
+        <section className="goal-root-section"><header><div><span className="overline">LONG-TERM DIRECTIONS</span><h2>장기 계획</h2></div><button onClick={() => onNewGoal(null)}><Plus size={15} />장기 계획</button></header><div className="goal-flow">{roots.map((goal) => {
           const progress = goalProgress(goals, goal.id, today);
           const childCount = goalScope(goals, goal.id).length - 1;
-          return <article className={`goal-root-card ${goal.color} ${breadcrumb[0]?.id === goal.id ? 'selected' : ''}`} key={goal.id}><button className="goal-root-main" onClick={() => setSelectedGoalId(goal.id)}><span className="goal-root-period">{goalCode(goal, goals, 0)} · {goal.period || '기간 미정'}</span><strong className="goal-root-title">{goal.title}</strong><small>{goal.detail || '완료 기준을 추가해보세요.'}</small>{progress === null ? <span className="goal-progress-empty">체크 기록 전</span> : <span className="goal-progress"><span><i style={{ width: `${progress}%` }} /></span><b>{progress}%</b></span>}</button><footer><button className="goal-manage-button" onClick={() => setSelectedGoalId(goal.id)}><GitBranch size={14} />하위 계획 관리 · {childCount}</button><button onClick={() => onEditGoal(goal)}><Pencil size={14} />수정</button></footer></article>;
+          return <article className={`goal-root-card ${goal.color} ${breadcrumb[0]?.id === goal.id ? 'selected' : ''}`} key={goal.id}><button className="goal-root-main" onClick={() => setSelectedGoalId(goal.id)}><span className="goal-root-period">{goalCode(goal, goals, 0)} · {goalHorizonLabel(goal)} · {goal.period || '기간 미정'}</span><strong className="goal-root-title">{goal.title}</strong><small>{goal.detail || '완료 기준을 추가해보세요.'}</small>{progress === null ? <span className="goal-progress-empty">매일 실행 연결 전</span> : <span className="goal-progress"><span><i style={{ width: `${progress}%` }} /></span><b>{progress}%</b></span>}</button><footer><button className="goal-manage-button" onClick={() => setSelectedGoalId(goal.id)}><GitBranch size={14} />세분화 관리 · {childCount}</button><button onClick={() => onEditGoal(goal)}><Pencil size={14} />수정</button></footer></article>;
         })}</div></section>
-        {selectedGoal ? <section className={`goal-detail-panel ${activityCount ? '' : 'no-activity'}`}>
+        {selectedGoal ? <section className={`goal-detail-panel ${hasDailyPlans ? '' : 'no-activity'}`}>
           <header className="goal-detail-header"><div><div className="goal-breadcrumb">{breadcrumb.map((goal, index) => <span key={goal.id}>{index ? <ChevronRight size={12} /> : null}<button onClick={() => setSelectedGoalId(goal.id)}>{goal.title}</button></span>)}</div><span className="goal-detail-period">{selectedGoal.period || '기간 미정'} 계획 관리</span><h2>{selectedGoal.title}</h2><p>{selectedGoal.detail || '완료 기준과 하위 계획을 추가해보세요.'}</p></div><div><button onClick={() => onNewGoal(selectedGoal.id)}><GitBranch size={15} />하위 계획 추가</button><button onClick={() => onEditGoal(selectedGoal)}><Pencil size={15} />수정</button></div></header>
-          {activityCount ? <div className="goal-garden-card"><header><div><Sprout size={19} /><span><strong>실행 기록</strong><small>직접 체크한 날짜부터 표시됩니다.</small></span></div><b>{goalProgress(goals, selectedGoal.id, today)}%</b></header><GoalLawn goals={goals} goalId={selectedGoal.id} today={today} /></div> : null}
           <div className="goal-tree-card"><header><div><GitBranch size={18} /><span><strong>계획 구조</strong><small>A→B1…→C12처럼 단계와 개수 제한 없이 세분화합니다.</small></span></div></header><GoalBranch goal={selectedGoal} goals={goals} today={today} selectedId={selectedGoal.id} depth={Math.max(0, breadcrumb.length - 1)} onSelect={setSelectedGoalId} onEdit={onEditGoal} onAddChild={onNewGoal} onAddTask={onNewGoalTask} onToggleCheck={onToggleGoalCheck} /></div>
+          <DailyPlanTracker goals={goals} goalId={selectedGoal.id} today={today} onToggle={onToggleGoalCheck} />
         </section> : null}
       </>}
     </div>
@@ -732,6 +739,7 @@ export function PlannerApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [focusGoalId, setFocusGoalId] = useState('');
   const activeDate = selectedDate || planner.today;
 
   useEffect(() => {
@@ -759,7 +767,11 @@ export function PlannerApp() {
   }
   function openEdit(task: PlannerTask) { setEditor({ task, isNew: false }); }
   function scheduleFromInbox(task: PlannerTask, date: string) { setEditor({ task: { ...task, date, start: '09:00' }, isNew: false }); }
-  function openNewGoal(parentId: string | null) { setCreateHubOpen(false); setGoalEditor({ goal: createEmptyGoal(parentId), isNew: true }); }
+  function openNewGoal(parentId: string | null) {
+    setCreateHubOpen(false);
+    const parent = parentId ? planner.goals.find((goal) => goal.id === parentId) : undefined;
+    setGoalEditor({ goal: createEmptyGoal(parentId, parent?.period), isNew: true });
+  }
   function openEditGoal(goal: PlanGoal) { setGoalEditor({ goal, isNew: false }); }
   function openNewScheduleBlock() {
     setCreateHubOpen(false);
@@ -788,7 +800,7 @@ export function PlannerApp() {
         <button className="app-brand" onClick={() => setActive('habit')}><span><Image src="/flowday-icon-192.png" width={33} height={33} alt="" priority /></span><strong>Flowday</strong></button>
         <nav>{NAV_ITEMS.map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => setActive(id)}><Icon size={18} /><span>{label}</span>{id === 'inbox' ? <b>{planner.tasks.filter((task) => !task.start && !task.completed).length}</b> : null}</button>)}</nav>
         <section className="sidebar-projects"><header><span>프로젝트</span><Plus size={14} /></header>{PROJECTS.map((project) => <button key={project.name}><i className={project.color} />{project.name}<span>{planner.tasks.filter((task) => task.project === project.name && !task.completed).length}</span></button>)}</section>
-        <footer><button onClick={() => setThemeMenu((value) => !value)}><Settings2 size={18} />설정</button><div className="sync-state"><Cloud size={15} /><span>이 기기에 저장됨</span></div></footer>
+        <footer><button onClick={() => setThemeMenu((value) => !value)}><Settings2 size={18} />설정</button><div className={`sync-state ${planner.saveError ? 'error' : ''}`}><Cloud size={15} /><span>{planner.saveError ? '저장 공간을 확인해주세요' : planner.lastSavedAt ? '이 기기에 즉시 저장됨' : '이 기기에 저장됨'}</span></div></footer>
       </aside>
 
       <section className="planner-main">
@@ -796,9 +808,9 @@ export function PlannerApp() {
         <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" aria-label="동기화 상태"><Cloud size={18} /></button><button className="avatar-button">SP</button></div></header>
 
         <div className="view-container">
-          {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} /> : null}
+          {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} scheduleBlocks={planner.scheduleBlocks} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} /> : null}
           {active === 'inbox' ? <InboxView today={planner.today} tasks={planner.tasks} onAdd={planner.upsertTask} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onMoveQuadrant={moveQuadrant} onSchedule={scheduleFromInbox} /> : null}
-          {active === 'plan' ? <PlanView today={planner.today} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} onNewTask={() => openNew(planner.today, null)} onEditTask={openEdit} onToggleTask={planner.toggleTask} onMoveQuadrant={moveQuadrant} onScheduleTask={(task) => scheduleFromInbox(task, planner.today)} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} onNewGoalTask={(goal) => openNew(activeDate, null, goal)} onNewGoal={openNewGoal} onEditGoal={openEditGoal} onToggleGoalCheck={planner.toggleGoalCheck} /> : null}
+          {active === 'plan' ? <PlanView key={focusGoalId || 'plan'} today={planner.today} goals={planner.goals} focusGoalId={focusGoalId} onNewGoalTask={(goal) => openNew(activeDate, null, goal)} onNewGoal={openNewGoal} onEditGoal={openEditGoal} onToggleGoalCheck={planner.toggleGoalCheck} /> : null}
           {active === 'calendar' ? <CalendarView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onMove={planner.moveTask} /> : null}
           {active === 'focus' ? <FocusView today={planner.today} tasks={planner.tasks} selectedTaskId={focusTaskId} onSelect={setFocusTaskId} onComplete={planner.toggleTask} /> : null}
         </div>
@@ -809,7 +821,7 @@ export function PlannerApp() {
 
       {createHubOpen ? <CreateHub onClose={() => setCreateHubOpen(false)} onTask={() => openNew()} onBlock={openNewScheduleBlock} onGoal={() => openNewGoal(null)} /> : null}
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
-      {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
+      {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
       {themeMenu ? <ThemeMenu theme={planner.theme} onChange={planner.setTheme} onClose={() => setThemeMenu(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
