@@ -770,9 +770,18 @@ export function PlannerApp() {
 
   useEffect(() => {
     if (!overlayOpen) return;
+    const root = document.documentElement;
     const previousOverflow = document.body.style.overflow;
+    const previousRootOverflow = root.style.overflow;
+    const previousRootOverscroll = root.style.overscrollBehavior;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previousOverflow; };
+    root.style.overflow = 'hidden';
+    root.style.overscrollBehavior = 'none';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      root.style.overflow = previousRootOverflow;
+      root.style.overscrollBehavior = previousRootOverscroll;
+    };
   }, [overlayOpen]);
 
   function closeSearch() { setSearchOpen(false); setSearchQuery(''); }

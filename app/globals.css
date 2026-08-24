@@ -386,3 +386,65 @@ button:focus-visible,input:focus-visible,textarea:focus-visible { outline: 2px s
 @media (min-width: 940px) {
   .view-container { padding-bottom: 86px; }
 }
+
+/* Keep the task editor anchored while only its content scrolls vertically. */
+.sheet-backdrop {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+.task-editor-sheet {
+  position: relative;
+  width: min(100%,520px);
+  max-width: 100%;
+  height: min(91dvh,850px);
+  max-height: min(91dvh,850px);
+  min-height: 0;
+  contain: layout paint;
+  overscroll-behavior: none;
+  touch-action: pan-y;
+}
+.task-editor-sheet .sheet-header,
+.task-editor-sheet .sheet-footer {
+  flex: 0 0 auto;
+}
+.task-editor-sheet .sheet-scroll {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding-bottom: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+.task-editor-sheet .sheet-footer {
+  position: static;
+}
+.task-editor-sheet .time-quick-row > div {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  overflow: hidden;
+  scroll-snap-type: none;
+}
+.task-editor-sheet .time-quick-row button {
+  width: 100%;
+  min-width: 0;
+  scroll-snap-align: none;
+}
+.task-editor-sheet .choice-scroll {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  overflow: hidden;
+  scroll-snap-type: none;
+}
+.task-editor-sheet .choice-scroll button {
+  min-width: 0;
+  height: auto;
+  padding: 7px 5px;
+  scroll-snap-align: none;
+  white-space: normal;
+}

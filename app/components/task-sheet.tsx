@@ -123,7 +123,7 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
     <div className="sheet-backdrop" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <form className="task-sheet" role="dialog" aria-modal="true" aria-labelledby="task-sheet-title" onSubmit={handleSubmit}>
+      <form className="task-sheet task-editor-sheet" role="dialog" aria-modal="true" aria-labelledby="task-sheet-title" onSubmit={handleSubmit}>
         <div className="sheet-handle" aria-hidden="true" />
         <header className="sheet-header">
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
