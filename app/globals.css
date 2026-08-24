@@ -359,3 +359,30 @@ button:focus-visible,input:focus-visible,textarea:focus-visible { outline: 2px s
   .time-block-grid { grid-template-columns: 1fr; }
   .mobile-bottom-nav { width: calc(100% - 14px); }
 }
+
+/* Mobile action symmetry and a single alignment axis for schedule inputs */
+.view-container { padding-bottom: 154px; }
+.mobile-bottom-nav { grid-template-columns: repeat(5,minmax(0,1fr)); overflow: visible; }
+.mobile-fab {
+  position: absolute;
+  left: 50%;
+  top: -64px;
+  width: 56px;
+  height: 56px;
+  margin: 0;
+  border: 5px solid var(--bg);
+  border-radius: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 26px color-mix(in srgb,var(--accent) 34%,transparent);
+}
+.schedule-date-choice { padding: 11px 0 12px; display: block; border-bottom: 1px solid var(--line); color: var(--muted); }
+.schedule-date-choice > span { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 12px; font-weight: 600; }
+.schedule-date-choice input { width: 100%; min-height: 48px; margin-top: 9px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; outline: 0; background: var(--surface-2); color: var(--ink); text-align: left; font-size: 12px; font-variant-numeric: tabular-nums; }
+.schedule-date-choice input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent); }
+.schedule-choice-panel { padding-left: 0; }
+.time-choice > header,.choice-block > header { justify-content: flex-start; flex-wrap: wrap; }
+.time-choice > header strong,.choice-block > header > strong { max-width: 100%; padding: 4px 7px; border-radius: 7px; background: var(--accent-soft); font-size: 9px; }
+
+@media (min-width: 940px) {
+  .view-container { padding-bottom: 86px; }
+}

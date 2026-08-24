@@ -148,10 +148,10 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
 
           <section className="sheet-section">
             <h3>언제 실행하나요</h3>
-            <div className="field-row">
-              <CalendarDays size={18} />
-              <label><span>날짜</span><input type="date" value={task.date} onChange={(event) => update('date', event.target.value)} /></label>
-            </div>
+            <label className="schedule-date-choice">
+              <span><CalendarDays size={17} />날짜</span>
+              <input type="date" value={task.date} onChange={(event) => update('date', event.target.value)} />
+            </label>
             <div className="field-row field-row-toggle">
               <Clock3 size={18} />
               <div><strong>타임라인에 배치</strong><small>끄면 인박스 할 일로 저장됩니다.</small></div>

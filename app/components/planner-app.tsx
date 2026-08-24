@@ -720,7 +720,16 @@ function CreateHub({ onClose, onTask, onBlock, onGoal }: CreateHubProps) {
 
 type BottomNavProps = { active: PlannerView; onChange: (view: PlannerView) => void; onAdd: () => void };
 function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
-  return <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">{NAV_ITEMS.slice(0, 3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}<button className="mobile-fab" onClick={onAdd} aria-label="새로 만들기"><Plus size={23} /></button>{NAV_ITEMS.slice(3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>;
+  return (
+    <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">
+      {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+        <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => onChange(id)}>
+          <Icon size={20} /><span>{label}</span>
+        </button>
+      ))}
+      <button className="mobile-fab" onClick={onAdd} aria-label="새로 만들기"><Plus size={24} /></button>
+    </nav>
+  );
 }
 
 export function PlannerApp() {
