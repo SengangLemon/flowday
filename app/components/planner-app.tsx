@@ -32,8 +32,17 @@ import {
   TimerReset,
   X,
 } from 'lucide-react';
-import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
+import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { usePlanner } from '../hooks/use-planner';
+import {
+  cancelFocusNotification,
+  configureNativeShell,
+  currentTimestamp,
+  installNativeEventBridge,
+  nativeImpact,
+  nativeSuccess,
+  scheduleFocusNotification,
+} from '../lib/native';
 import { createClient } from '../lib/supabase/client';
 import {
   createEmptyGoal,
@@ -635,18 +644,35 @@ function FocusView({ today, tasks, selectedTaskId, onSelect, onComplete }: Focus
   const [seconds, setSeconds] = useState(25 * 60);
   const [running, setRunning] = useState(false);
   const [mode, setMode] = useState<'focus' | 'break'>('focus');
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const finishedRef = useRef(false);
   useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => setSeconds((value) => {
-      if (value <= 1) {
+    if (!running || !endsAt) return;
+    const targetTime = endsAt;
+    function updateRemaining() {
+      const remaining = Math.max(0, Math.ceil((targetTime - currentTimestamp()) / 1000));
+      setSeconds(remaining);
+      if (remaining === 0 && !finishedRef.current) {
+        finishedRef.current = true;
         setRunning(false);
-        return 0;
+        setEndsAt(null);
+        void nativeSuccess().catch(() => undefined);
       }
-      return value - 1;
-    }), 1000);
+    }
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 250);
     return () => window.clearInterval(timer);
-  }, [running]);
-  function setTimerMode(next: 'focus' | 'break') { setMode(next); setRunning(false); setSeconds(next === 'focus' ? 25 * 60 : 5 * 60); }
+  }, [endsAt, running]);
+  useEffect(() => () => { void cancelFocusNotification().catch(() => undefined); }, []);
+  function setTimerMode(next: 'focus' | 'break') {
+    setMode(next);
+    setRunning(false);
+    setEndsAt(null);
+    setSeconds(next === 'focus' ? 25 * 60 : 5 * 60);
+    finishedRef.current = false;
+    void cancelFocusNotification().catch(() => undefined);
+    void nativeImpact().catch(() => undefined);
+  }
   function durationLabel(minutes: number) {
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
@@ -654,6 +680,32 @@ function FocusView({ today, tasks, selectedTaskId, onSelect, onComplete }: Focus
   }
   const total = mode === 'focus' ? 25 * 60 : 5 * 60;
   const progress = Math.round((total - seconds) / total * 360);
+  async function toggleTimer() {
+    if (running) {
+      const remaining = endsAt ? Math.max(0, Math.ceil((endsAt - currentTimestamp()) / 1000)) : seconds;
+      setSeconds(remaining);
+      setRunning(false);
+      setEndsAt(null);
+      await cancelFocusNotification().catch(() => undefined);
+      await nativeImpact().catch(() => undefined);
+      return;
+    }
+    const nextSeconds = seconds > 0 ? seconds : total;
+    if (seconds <= 0) setSeconds(nextSeconds);
+    finishedRef.current = false;
+    setEndsAt(currentTimestamp() + nextSeconds * 1000);
+    setRunning(true);
+    await nativeImpact('medium').catch(() => undefined);
+    await scheduleFocusNotification(nextSeconds, mode, task?.title).catch(() => undefined);
+  }
+  function resetTimer() {
+    setRunning(false);
+    setEndsAt(null);
+    setSeconds(total);
+    finishedRef.current = false;
+    void cancelFocusNotification().catch(() => undefined);
+    void nativeImpact().catch(() => undefined);
+  }
   return (
     <div className="content-view focus-view-v2">
       <header className="view-intro"><div><span className="overline">집중 모드</span><h1>집중</h1><p>지금 필요한 한 가지에만 조용히 몰입하세요.</p></div></header>
@@ -665,7 +717,7 @@ function FocusView({ today, tasks, selectedTaskId, onSelect, onComplete }: Focus
             <header><i className={task?.color ?? 'sage'} /><span>집중할 실행</span></header>
             {focusable.length ? <div className="focus-task-options" role="group" aria-label="집중할 실행">{focusable.map((item) => <button type="button" aria-pressed={task?.id === item.id} key={item.id} onClick={() => onSelect(item.id)}>{item.title}</button>)}</div> : <p>오늘 배치된 실행이 없습니다.</p>}
           </div>
-          <div className="focus-actions"><button className="icon-button" onClick={() => { setRunning(false); setSeconds(total); }} aria-label="타이머 초기화"><TimerReset size={18} /></button><button className="focus-start" onClick={() => setRunning((value) => !value)}>{running ? '잠시 멈춤' : '집중 시작'}</button>{task ? <button className="icon-button" onClick={() => onComplete(task.id, task.occurrenceDate)} aria-label="작업 완료"><Check size={18} /></button> : null}</div>
+          <div className="focus-actions"><button className="icon-button" onClick={resetTimer} aria-label="타이머 초기화"><TimerReset size={18} /></button><button className="focus-start" onClick={() => { void toggleTimer(); }}>{running ? '잠시 멈춤' : '집중 시작'}</button>{task ? <button className="icon-button" onClick={() => onComplete(task.id, task.occurrenceDate)} aria-label="작업 완료"><Check size={18} /></button> : null}</div>
         </section>
         <aside className="focus-stats"><article><Sparkles size={19} /><span>오늘 완료 블록</span><strong>{durationLabel(completedToday.reduce((sum, item) => sum + item.duration, 0))}</strong><p>{completedToday.length}개의 실제 완료 기록</p></article><article><BarChart3 size={19} /><span>최근 7일 완료 블록</span><strong>{durationLabel(weekCompleted.reduce((sum, item) => sum + item.duration, 0))}</strong><p>{weekCompleted.length}개의 실제 완료 기록</p></article></aside>
       </div>
@@ -735,9 +787,15 @@ function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
   );
 }
 
-type PlannerAppProps = { userId: string; userEmail: string };
+type PlannerAppProps = {
+  userId: string;
+  userEmail: string;
+  accountApiUrl?: string;
+  legalBaseUrl?: string;
+  onAuthExit?: () => void;
+};
 
-export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
+export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onAuthExit }: PlannerAppProps) {
   const planner = usePlanner(userId);
   const [active, setActive] = useState<PlannerView>('habit');
   const [selectedDate, setSelectedDate] = useState('');
@@ -756,6 +814,16 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
   const automaticIntroView = planner.ready && !planner.introducedViews.includes(active) && closedIntroView !== active ? active : null;
   const introView = replayIntroView ?? automaticIntroView;
   const overlayOpen = Boolean(introView) || settingsOpen || createHubOpen || searchOpen || Boolean(editor || goalEditor || timeBlockEditor);
+
+  useEffect(() => {
+    void configureNativeShell(planner.theme);
+  }, [planner.theme]);
+
+  useEffect(() => {
+    let removeBridge: () => void = () => undefined;
+    void installNativeEventBridge().then((remove) => { removeBridge = remove; });
+    return () => removeBridge();
+  }, []);
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
@@ -844,15 +912,24 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    if (onAuthExit) {
+      onAuthExit();
+      return;
+    }
     window.location.assign(new URL('/login', window.location.origin));
   }
 
   async function deleteAccount() {
     try {
-      const response = await fetch('/api/account', {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(accountApiUrl ?? '/api/account', {
         method: 'DELETE',
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
+        credentials: accountApiUrl ? 'omit' : 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          ...(accountApiUrl && session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) {
@@ -860,7 +937,11 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
       }
 
       planner.clearLocalPlannerData();
-      await createClient().auth.signOut({ scope: 'local' });
+      await supabase.auth.signOut({ scope: 'local' });
+      if (onAuthExit) {
+        onAuthExit();
+        return { ok: true, message: '계정과 모든 계획 데이터를 삭제했습니다.' };
+      }
       window.location.replace(new URL('/login', window.location.origin));
       return { ok: true, message: '계정과 모든 계획 데이터를 삭제했습니다.' };
     } catch {
@@ -908,7 +989,7 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
-      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onDeleteAccount={deleteAccount} onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} legalBaseUrl={legalBaseUrl} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onDeleteAccount={deleteAccount} onClose={() => setSettingsOpen(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
       {introView ? <MenuIntro key={introView} view={introView} onComplete={completeMenuIntro} /> : null}
     </main>

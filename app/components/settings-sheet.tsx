@@ -36,6 +36,7 @@ type SettingsSheetProps = {
   lastSavedAt: number | null;
   saveError: boolean;
   syncStatus: PlannerSyncStatus;
+  legalBaseUrl?: string;
   onThemeChange: (theme: Theme) => void;
   onExport: () => string;
   onImport: (raw: string) => OperationResult;
@@ -53,7 +54,7 @@ const THEMES: { id: Theme; label: string; description: string; icon: typeof Sun 
   { id: 'dark', label: '어둡게', description: '야간 집중', icon: Moon },
 ];
 
-export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, onThemeChange, onExport, onImport, onRestore, onReset, onShowMenuIntro, onSignOut, onDeleteAccount, onClose }: SettingsSheetProps) {
+export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, legalBaseUrl = '', onThemeChange, onExport, onImport, onRestore, onReset, onShowMenuIntro, onSignOut, onDeleteAccount, onClose }: SettingsSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<{ name: string; raw: string } | null>(null);
@@ -169,9 +170,9 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
             <div className="account-row"><span><UserRound size={17} /></span><div><small>로그인 이메일</small><strong>{userEmail || 'Flowday 사용자'}</strong></div><button type="button" disabled={signingOut} onClick={async () => { setSigningOut(true); await onSignOut(); }}>{signingOut ? <LoaderCircle className="spin" size={16} /> : <LogOut size={16} />}로그아웃</button></div>
             <button className="settings-tour-button" type="button" onClick={onShowMenuIntro}><span><Compass size={17} /></span><div><strong>현재 메뉴 안내 다시 보기</strong><small>지금 보고 있는 화면의 핵심 기능 확인</small></div><ChevronRight size={17} /></button>
             <nav className="settings-legal-links" aria-label="정책과 고객지원">
-              <a href="/privacy"><ShieldCheck size={15} />개인정보처리방침</a>
-              <a href="/terms"><FileText size={15} />이용약관</a>
-              <a href="/support">고객지원</a>
+              <a href={`${legalBaseUrl}/privacy`} target={legalBaseUrl ? '_blank' : undefined} rel={legalBaseUrl ? 'noreferrer' : undefined}><ShieldCheck size={15} />개인정보처리방침</a>
+              <a href={`${legalBaseUrl}/terms`} target={legalBaseUrl ? '_blank' : undefined} rel={legalBaseUrl ? 'noreferrer' : undefined}><FileText size={15} />이용약관</a>
+              <a href={`${legalBaseUrl}/support`} target={legalBaseUrl ? '_blank' : undefined} rel={legalBaseUrl ? 'noreferrer' : undefined}>고객지원</a>
             </nav>
           </section>
 

@@ -8,12 +8,22 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "mobile:build": "vite build --config vite.mobile.config.ts",
+    "ios:sync": "npm run mobile:build && cap sync ios",
+    "ios:open": "cap open ios",
     "start": "next start",
-    "lint": "eslint . --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern mobile-dist --ignore-pattern ios/App/App/public",
     "db:migrate": "node scripts/migrate.mjs",
     "verify:auth": "node scripts/verify-auth.mjs"
   },
   "dependencies": {
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/keyboard": "8.0.5",
+    "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/network": "8.0.1",
+    "@capacitor/status-bar": "8.0.3",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "^1.33.0",
@@ -22,13 +32,17 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.0",
+    "@capacitor/ios": "8.5.0",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.0",
     "eslint": "9.39.4",
     "eslint-config-next": "^16.3.2",
     "postgres": "^3.4.9",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vite": "8.2.2"
   },
   "type": "module"
 }

@@ -1,0 +1,125 @@
+name: iOS build and TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: Build a signed archive and upload it to TestFlight
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: flowday-ios-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      PROFILE_NAME: AppStore com.senganglemon.flowday
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "~26.4.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundled mobile app
+        run: npm run mobile:build
+
+      - name: Sync Capacitor iOS project
+        run: npx cap sync ios
+
+      - name: Import App Store certificate
+        if: inputs.upload_testflight
+        uses: Apple-Actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Download App Store provisioning profile
+        if: inputs.upload_testflight
+        uses: Apple-Actions/download-provisioning-profiles@v6
+        with:
+          bundle-id: com.senganglemon.flowday
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Build unsigned simulator app
+        if: ${{ !inputs.upload_testflight }}
+        run: >-
+          xcodebuild
+          -project ios/App/App.xcodeproj
+          -scheme App
+          -configuration Debug
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          CURRENT_PROJECT_VERSION=${{ github.run_number }}
+          build
+
+      - name: Prepare export options
+        if: inputs.upload_testflight
+        run: /usr/libexec/PlistBuddy -c "Set :teamID $APPLE_TEAM_ID" ios/ExportOptions.plist
+
+      - name: Archive signed app
+        if: inputs.upload_testflight
+        run: >-
+          xcodebuild
+          -project ios/App/App.xcodeproj
+          -scheme App
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -archivePath .build/Flowday.xcarchive
+          DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+          CODE_SIGN_STYLE=Manual
+          PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+          CURRENT_PROJECT_VERSION=${{ github.run_number }}
+          archive
+
+      - name: Export IPA
+        if: inputs.upload_testflight
+        run: >-
+          xcodebuild
+          -exportArchive
+          -archivePath .build/Flowday.xcarchive
+          -exportPath .build/export
+          -exportOptionsPlist ios/ExportOptions.plist
+
+      - name: Upload IPA artifact
+        if: inputs.upload_testflight
+        uses: actions/upload-artifact@v7
+        with:
+          name: Flowday-${{ github.run_number }}
+          path: .build/export/App.ipa
+          if-no-files-found: error
+
+      - name: Upload to TestFlight
+        if: inputs.upload_testflight
+        uses: Apple-Actions/upload-testflight-build@v5
+        with:
+          app-path: .build/export/App.ipa
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
