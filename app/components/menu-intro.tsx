@@ -1,8 +1,10 @@
 'use client';
 
 import {
+  ArrowRight,
   CalendarDays,
   Check,
+  Clock3,
   Focus,
   Inbox,
   Repeat2,
@@ -16,55 +18,107 @@ import type { PlannerView } from '../lib/planner';
 
 type MenuIntroContent = {
   menu: string;
-  eyebrow: string;
   title: string;
-  description: string;
-  points: [string, string];
+  caption: string;
+  visualLabel: string;
   icon: LucideIcon;
 };
 
 const MENU_INTROS: Record<PlannerView, MenuIntroContent> = {
   habit: {
     menu: '습관',
-    eyebrow: '오늘의 실행 화면',
-    title: '시간 블록으로 오늘을 설계하세요',
-    description: '자주 쓰는 시간대를 블록으로 만들고, 인박스의 할 일을 원하는 시간에 배치하는 화면입니다.',
-    points: ['반복 습관은 날짜별로 따로 체크', '내 생활에 맞는 시간 블록을 자유롭게 구성'],
+    title: '시간 블록으로 하루를 배치해요',
+    caption: '블록을 눌러 습관과 할 일을 채워보세요.',
+    visualLabel: '새벽부터 저녁까지 시간대별로 배치된 세 개의 습관 블록',
     icon: Repeat2,
   },
   inbox: {
     menu: '인박스',
-    eyebrow: '생각을 놓치지 않는 곳',
-    title: '할 일을 먼저 모으고 나중에 정리하세요',
-    description: '해야 할 일을 빠르게 적어두고 프로젝트와 우선순위를 정한 뒤 일정으로 보낼 수 있습니다.',
-    points: ['아이젠하워 매트릭스로 중요도 판단', '시간이 정해지지 않은 할 일을 한곳에서 관리'],
+    title: '모으고, 우선순위를 나눠요',
+    caption: '할 일을 매트릭스로 옮겨 결정합니다.',
+    visualLabel: '인박스에 모인 할 일이 네 구역의 아이젠하워 매트릭스로 이동하는 모습',
     icon: Inbox,
   },
   plan: {
     menu: '계획',
-    eyebrow: '방향을 실행으로 바꾸는 곳',
-    title: '큰 목표를 오늘 할 일까지 나누세요',
-    description: '3년 이상의 장기계획 아래에 기간이 다른 하위계획을 원하는 만큼 연결할 수 있습니다.',
-    points: ['장기 → 중기 → 단기 → 매일 계획으로 세분화', '매일 실행한 기록은 잔디 형태로 확인'],
+    title: '큰 목표를 오늘까지 연결해요',
+    caption: '목표를 쪼개고 매일 실행을 기록합니다.',
+    visualLabel: '3년 목표가 1년, 3개월, 오늘 계획으로 나뉘고 잔디 기록으로 이어지는 모습',
     icon: Target,
   },
   calendar: {
     menu: '캘린더',
-    eyebrow: '계획의 전체 흐름',
-    title: '주간·월간·연간 일정을 한눈에 보세요',
-    description: '색상 블록으로 계획이 몰린 시기와 빈 시간을 확인하고 날짜를 옮겨 다시 배치할 수 있습니다.',
-    points: ['주간·월간·연간 보기 전환', '색상으로 프로젝트와 일정 흐름 파악'],
+    title: '계획을 색으로 한눈에 봐요',
+    caption: '주간·월간·연간 흐름을 살펴봅니다.',
+    visualLabel: '여러 날짜에 색상 일정 블록이 배치된 월간 달력',
     icon: CalendarDays,
   },
   focus: {
     menu: '집중',
-    eyebrow: '계획을 끝내는 마지막 단계',
-    title: '한 번에 하나의 일에 집중하세요',
-    description: '지금 실행할 할 일을 고르고 뽀모도로 타이머를 시작해 실제 행동으로 연결합니다.',
-    points: ['집중할 할 일을 선택하고 바로 시작', '완료 기록을 오늘의 계획에 반영'],
+    title: '지금 할 한 가지에 집중해요',
+    caption: '25분 집중과 완료를 바로 연결합니다.',
+    visualLabel: '25분 뽀모도로 타이머와 선택된 하나의 할 일',
     icon: Focus,
   },
 };
+
+const LAWN_CELLS = [0, 1, 0, 2, 0, 1, 2, 0, 1, 0, 2, 2, 1, 0, 1, 2, 0, 1, 2, 2, 1, 0, 2, 1, 0, 2, 1, 2];
+const CALENDAR_CELLS = Array.from({ length: 35 }, (_, index) => index);
+
+function MenuIntroVisual({ view, label }: { view: PlannerView; label: string }) {
+  if (view === 'habit') {
+    return (
+      <div className="menu-intro-visual habit-visual" role="img" aria-label={label}>
+        <div className="intro-habit-board">
+          <span>05</span><div className="intro-time-block sage"><Repeat2 size={13} /><i /><small>3h</small></div>
+          <span>09</span><div className="intro-time-block violet"><Focus size={13} /><i /><small>3h</small></div>
+          <span>13</span><div className="intro-time-block amber"><Check size={13} /><i /><small>3h</small></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'inbox') {
+    return (
+      <div className="menu-intro-visual inbox-visual" role="img" aria-label={label}>
+        <div className="intro-note-stack"><i /><i /><i /><span><Inbox size={18} /><b>3</b></span></div>
+        <ArrowRight className="intro-flow-arrow" size={23} />
+        <div className="intro-mini-matrix"><i className="rose" /><i className="sage" /><i className="blue" /><i className="violet" /><span><Check size={15} /></span></div>
+      </div>
+    );
+  }
+
+  if (view === 'plan') {
+    return (
+      <div className="menu-intro-visual plan-visual" role="img" aria-label={label}>
+        <div className="intro-goal-tree">
+          <span className="goal-node root">3Y</span><i className="goal-line one" /><span className="goal-node year">1Y</span><i className="goal-line two" /><span className="goal-node quarter">3M</span><i className="goal-line three" /><span className="goal-node today">TODAY</span>
+        </div>
+        <ArrowRight className="intro-flow-arrow" size={20} />
+        <div className="intro-lawn">{LAWN_CELLS.map((level, index) => <i className={`level-${level}`} key={`${level}-${index}`} />)}</div>
+      </div>
+    );
+  }
+
+  if (view === 'calendar') {
+    return (
+      <div className="menu-intro-visual calendar-visual" role="img" aria-label={label}>
+        <div className="intro-calendar-card">
+          <header><span /><strong>AUG</strong><CalendarDays size={15} /></header>
+          <div className="intro-calendar-grid">{CALENDAR_CELLS.map((cell) => <i key={cell} />)}</div>
+          <b className="calendar-event event-one" /><b className="calendar-event event-two" /><b className="calendar-event event-three" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="menu-intro-visual focus-visual" role="img" aria-label={label}>
+      <div className="intro-focus-ring"><div><Clock3 size={15} /><strong>25:00</strong></div></div>
+      <div className="intro-focus-task"><span><Check size={15} /></span><i /><b>1</b></div>
+    </div>
+  );
+}
 
 type MenuIntroProps = {
   view: PlannerView;
@@ -100,33 +154,30 @@ export function MenuIntro({ view, onComplete }: MenuIntroProps) {
     <div className="onboarding-backdrop">
       <section
         ref={dialogRef}
-        className="onboarding-card"
+        className="onboarding-card visual-intro-card"
         role="dialog"
         aria-modal="true"
         aria-labelledby="menu-intro-title"
-        aria-describedby="menu-intro-description"
+        aria-describedby="menu-intro-caption"
         tabIndex={-1}
         autoFocus
         onKeyDown={handleKeyDown}
       >
         <header className="onboarding-header">
           <div className="onboarding-step-icon"><Icon size={23} /></div>
-          <div className="onboarding-progress-copy"><span>{intro.menu}</span><strong>이 메뉴를 처음 열었어요</strong></div>
+          <div className="onboarding-progress-copy"><span>{intro.menu}</span><strong>처음 보는 화면</strong></div>
           <button type="button" onClick={onComplete} aria-label="안내 닫기"><X size={17} /></button>
         </header>
 
-        <div className="onboarding-copy">
-          <span className="overline">{intro.eyebrow}</span>
+        <div className="visual-intro-copy">
           <h2 id="menu-intro-title">{intro.title}</h2>
-          <p id="menu-intro-description">{intro.description}</p>
         </div>
 
-        <ul className="onboarding-points">
-          {intro.points.map((point) => <li key={point}><span><Check size={13} /></span>{point}</li>)}
-        </ul>
+        <MenuIntroVisual view={view} label={intro.visualLabel} />
+        <p className="visual-intro-caption" id="menu-intro-caption">{intro.caption}</p>
 
         <footer className="onboarding-actions single">
-          <button className="onboarding-next" type="button" onClick={onComplete}>확인했어요</button>
+          <button className="onboarding-next" type="button" onClick={onComplete}>바로 사용하기</button>
         </footer>
       </section>
     </div>
