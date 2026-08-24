@@ -1,9 +1,10 @@
 'use client';
 
-import { Check, Clock3, Trash2, X } from 'lucide-react';
+import { Check, Clock3, X } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { ScheduleBlock, scheduleBlockDuration, TaskColor, timeToMinutes } from '../lib/planner';
 import { TimeChoice } from './time-choice';
+import { ConfirmDeleteButton } from './confirm-delete-button';
 
 type TimeBlockSheetProps = {
   block: ScheduleBlock;
@@ -87,7 +88,7 @@ export function TimeBlockSheet({ block: initialBlock, isNew, onClose, onSave, on
           </section>
 
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          {!isNew ? <section className="sheet-secondary-actions one-action"><button className="danger" type="button" onClick={() => { onDelete(block.id); onClose(); }}><Trash2 size={17} />이 시간 블록 삭제</button></section> : null}
+          {!isNew ? <section className="sheet-secondary-actions one-action"><ConfirmDeleteButton label="이 시간 블록 삭제" warning="이미 만든 할 일은 유지되고 이 블록 템플릿만 삭제됩니다." onConfirm={() => { onDelete(block.id); onClose(); }} /></section> : null}
         </div>
 
         <footer className="sheet-footer"><button className="sheet-save-button" type="submit">{isNew ? '시간 블록 만들기' : '변경사항 저장'}</button></footer>

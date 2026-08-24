@@ -11,15 +11,14 @@ import {
   ChevronRight,
   Circle,
   Clock3,
-  Cloud,
   Command,
   Edit3,
   Focus,
   GripVertical,
+  HardDrive,
   GitBranch,
   Inbox,
   LayoutGrid,
-  Moon,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -28,7 +27,6 @@ import {
   Settings2,
   Sparkles,
   Sprout,
-  Sun,
   Target,
   TimerReset,
   X,
@@ -58,11 +56,11 @@ import {
   shiftYear,
   TaskColor,
   tasksForDate,
-  Theme,
   timeToMinutes,
   weekDates,
 } from '../lib/planner';
 import { GoalSheet } from './goal-sheet';
+import { SettingsSheet } from './settings-sheet';
 import { TaskSheet } from './task-sheet';
 import { TimeBlockSheet } from './time-block-sheet';
 
@@ -471,7 +469,7 @@ type GoalBranchProps = {
   onSelect: (goalId: string) => void;
   onEdit: (goal: PlanGoal) => void;
   onAddChild: (parentId: string) => void;
-  onAddTask: (goalTitle: string) => void;
+  onAddTask: (goal: PlanGoal) => void;
   onToggleCheck: (goalId: string, date: string) => void;
 };
 
@@ -484,7 +482,7 @@ function GoalBranch({ goal, goals, today, selectedId, depth = 0, onSelect, onEdi
         <button className="goal-node-main" onClick={() => onSelect(goal.id)}><span>{goalCode(goal, goals, depth)} · {goalHorizonLabel(goal)}</span><strong>{goal.title}</strong><small>{goal.period || '기간 미정'} · {goal.detail || '완료 기준을 추가해보세요.'}</small></button>
         <div className="goal-node-actions">
           {goal.daily ? <button className={`daily-check ${checked ? 'checked' : ''}`} onClick={() => onToggleCheck(goal.id, today)} aria-label={`${goal.title} 오늘 체크`}><CheckCircle2 size={15} />{checked ? '오늘 완료' : '오늘 체크'}</button> : null}
-          <button onClick={() => onAddTask(goal.title)} aria-label="실행 블록 추가"><CalendarDays size={15} /></button>
+          <button onClick={() => onAddTask(goal)} aria-label="실행 블록 추가"><CalendarDays size={15} /></button>
           <button onClick={() => onAddChild(goal.id)} aria-label="하위 계획 추가"><GitBranch size={15} /></button>
           <button onClick={() => onEdit(goal)} aria-label="계획 수정"><Pencil size={15} /></button>
         </div>
@@ -530,7 +528,7 @@ type PlanViewProps = {
   today: string;
   goals: PlanGoal[];
   focusGoalId: string;
-  onNewGoalTask: (goal: string) => void;
+  onNewGoalTask: (goal: PlanGoal) => void;
   onNewGoal: (parentId: string | null) => void;
   onEditGoal: (goal: PlanGoal) => void;
   onToggleGoalCheck: (goalId: string, date: string) => void;
@@ -668,12 +666,6 @@ function FocusView({ today, tasks, selectedTaskId, onSelect, onComplete }: Focus
   );
 }
 
-type ThemeMenuProps = { theme: Theme; onChange: (theme: Theme) => void; onClose: () => void };
-function ThemeMenu({ theme, onChange, onClose }: ThemeMenuProps) {
-  const themes: { id: Theme; label: string; icon: typeof Sun }[] = [{ id: 'light', label: '밝게', icon: Sun }, { id: 'dim', label: '중간', icon: Cloud }, { id: 'dark', label: '어둡게', icon: Moon }];
-  return <div className="theme-menu"><header><strong>화면 테마</strong><button onClick={onClose}><MoreHorizontal size={16} /></button></header>{themes.map(({ id, label, icon: Icon }) => <button className={theme === id ? 'selected' : ''} key={id} onClick={() => { onChange(id); onClose(); }}><Icon size={17} /><span>{label}</span>{theme === id ? <Check size={15} /> : null}</button>)}</div>;
-}
-
 type SearchOverlayProps = {
   query: string;
   tasks: PlannerTask[];
@@ -694,7 +686,7 @@ function SearchOverlay({ query, tasks, goals, blocks, onQueryChange, onClose, on
   const blockResults = normalizedQuery ? blocks.filter((block) => matches(block.name, block.start, block.end)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4) : [];
   const hasResults = taskResults.length + goalResults.length + blockResults.length > 0;
 
-  return <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div><header><Search size={18} /><input autoFocus value={query} placeholder="할 일, 계획, 시간 블록 검색" onChange={(event) => onQueryChange(event.target.value)} /><button type="button" onClick={onClose}>ESC</button></header>{!normalizedQuery ? <p>제목, 프로젝트, 메모와 계획을 한 번에 검색할 수 있습니다.</p> : null}{normalizedQuery && !hasResults ? <p>일치하는 항목이 없습니다.</p> : null}{taskResults.length ? <div className="search-result-group"><strong>할 일</strong>{taskResults.map((task) => <button type="button" key={task.id} onClick={() => onOpenTask(task)}><i className={task.color} /><span><b>{task.title}</b><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div> : null}{goalResults.length ? <div className="search-result-group"><strong>계획</strong>{goalResults.map((goal) => <button type="button" key={goal.id} onClick={() => onOpenGoal(goal)}><i className={goal.color} /><span><b>{goal.title}</b><small>{goal.period} · {goal.parentId ? '하위 계획' : '최상위 계획'}</small></span><Target size={15} /></button>)}</div> : null}{blockResults.length ? <div className="search-result-group"><strong>시간 블록</strong>{blockResults.map((block) => <button type="button" key={block.id} onClick={() => onOpenBlock(block)}><i className={block.color} /><span><b>{block.name}</b><small>{block.start}–{block.end}</small></span><Clock3 size={15} /></button>)}</div> : null}</div></div>;
+  return <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div><header><Search size={18} /><input autoFocus value={query} aria-label="통합 검색어" placeholder="할 일, 계획, 시간 블록 검색" onChange={(event) => onQueryChange(event.target.value)} /><button type="button" onClick={onClose} aria-label="검색 닫기">ESC</button></header>{!normalizedQuery ? <p>제목, 프로젝트, 메모와 계획을 한 번에 검색할 수 있습니다.</p> : null}{normalizedQuery && !hasResults ? <p>일치하는 항목이 없습니다.</p> : null}{taskResults.length ? <div className="search-result-group"><strong>할 일</strong>{taskResults.map((task) => <button type="button" key={task.id} onClick={() => onOpenTask(task)}><i className={task.color} /><span><b>{task.title}</b><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div> : null}{goalResults.length ? <div className="search-result-group"><strong>계획</strong>{goalResults.map((goal) => <button type="button" key={goal.id} onClick={() => onOpenGoal(goal)}><i className={goal.color} /><span><b>{goal.title}</b><small>{goal.period} · {goal.parentId ? '하위 계획' : '최상위 계획'}</small></span><Target size={15} /></button>)}</div> : null}{blockResults.length ? <div className="search-result-group"><strong>시간 블록</strong>{blockResults.map((block) => <button type="button" key={block.id} onClick={() => onOpenBlock(block)}><i className={block.color} /><span><b>{block.name}</b><small>{block.start}–{block.end}</small></span><Clock3 size={15} /></button>)}</div> : null}</div></div>;
 }
 
 type CreateHubProps = {
@@ -724,7 +716,7 @@ function CreateHub({ onClose, onTask, onBlock, onGoal }: CreateHubProps) {
 
 type BottomNavProps = { active: PlannerView; onChange: (view: PlannerView) => void; onAdd: () => void };
 function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
-  return <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">{NAV_ITEMS.slice(0, 3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}<button className="mobile-fab" onClick={onAdd} aria-label="새로 만들기"><Plus size={23} /></button>{NAV_ITEMS.slice(3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>;
+  return <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">{NAV_ITEMS.slice(0, 3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}<button className="mobile-fab" onClick={onAdd} aria-label="새로 만들기"><Plus size={23} /></button>{NAV_ITEMS.slice(3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>;
 }
 
 export function PlannerApp() {
@@ -734,13 +726,14 @@ export function PlannerApp() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [goalEditor, setGoalEditor] = useState<GoalEditorState>(null);
   const [timeBlockEditor, setTimeBlockEditor] = useState<TimeBlockEditorState>(null);
-  const [themeMenu, setThemeMenu] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [createHubOpen, setCreateHubOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [focusGoalId, setFocusGoalId] = useState('');
   const activeDate = selectedDate || planner.today;
+  const overlayOpen = settingsOpen || createHubOpen || searchOpen || Boolean(editor || goalEditor || timeBlockEditor);
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
@@ -752,18 +745,29 @@ export function PlannerApp() {
         setCreateHubOpen(false);
         setSearchOpen(false);
         setSearchQuery('');
+        setSettingsOpen(false);
+        setEditor(null);
+        setGoalEditor(null);
+        setTimeBlockEditor(null);
       }
     }
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
   }, []);
 
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [overlayOpen]);
+
   function closeSearch() { setSearchOpen(false); setSearchQuery(''); }
 
-  function openNew(date = activeDate, start: string | null = null, goal?: string) {
+  function openNew(date = activeDate, start: string | null = null, goal?: PlanGoal) {
     setCreateHubOpen(false);
     const task = createEmptyTask(date, start);
-    setEditor({ task: goal ? { ...task, goal } : task, isNew: true });
+    setEditor({ task: goal ? { ...task, goalId: goal.id, goal: goal.title } : task, isNew: true });
   }
   function openEdit(task: PlannerTask) { setEditor({ task, isNew: false }); }
   function scheduleFromInbox(task: PlannerTask, date: string) { setEditor({ task: { ...task, date, start: '09:00' }, isNew: false }); }
@@ -798,14 +802,14 @@ export function PlannerApp() {
     <main className={`planner-shell theme-${planner.theme}`}>
       <aside className="desktop-sidebar">
         <button className="app-brand" onClick={() => setActive('habit')}><span><Image src="/flowday-icon-192.png" width={33} height={33} alt="" priority /></span><strong>Flowday</strong></button>
-        <nav>{NAV_ITEMS.map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => setActive(id)}><Icon size={18} /><span>{label}</span>{id === 'inbox' ? <b>{planner.tasks.filter((task) => !task.start && !task.completed).length}</b> : null}</button>)}</nav>
+        <nav>{NAV_ITEMS.map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => setActive(id)}><Icon size={18} /><span>{label}</span>{id === 'inbox' ? <b>{planner.tasks.filter((task) => !task.start && !task.completed).length}</b> : null}</button>)}</nav>
         <section className="sidebar-projects"><header><span>프로젝트</span><Plus size={14} /></header>{PROJECTS.map((project) => <button key={project.name}><i className={project.color} />{project.name}<span>{planner.tasks.filter((task) => task.project === project.name && !task.completed).length}</span></button>)}</section>
-        <footer><button onClick={() => setThemeMenu((value) => !value)}><Settings2 size={18} />설정</button><div className={`sync-state ${planner.saveError ? 'error' : ''}`}><Cloud size={15} /><span>{planner.saveError ? '저장 공간을 확인해주세요' : planner.lastSavedAt ? '이 기기에 즉시 저장됨' : '이 기기에 저장됨'}</span></div></footer>
+        <footer><button onClick={() => setSettingsOpen(true)}><Settings2 size={18} />설정과 데이터</button><div className={`sync-state ${planner.saveError ? 'error' : ''}`}><HardDrive size={15} /><span>{planner.saveError ? '저장 공간을 확인해주세요' : planner.lastSavedAt ? '이 기기에 즉시 저장됨' : '이 기기에 저장됨'}</span></div></footer>
       </aside>
 
       <section className="planner-main">
-        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div className="mobile-header-copy"><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><div className="mobile-header-actions"><button className="icon-button ghost" onClick={() => setSearchOpen(true)} aria-label="통합 검색"><Search size={19} /></button><button className="icon-button ghost" onClick={() => setThemeMenu((value) => !value)} aria-label="설정"><Settings2 size={20} /></button></div></header>
-        <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" aria-label="동기화 상태"><Cloud size={18} /></button><button className="avatar-button">SP</button></div></header>
+        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div className="mobile-header-copy"><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><div className="mobile-header-actions"><button className="icon-button ghost" onClick={() => setSearchOpen(true)} aria-label="통합 검색"><Search size={19} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={20} /></button></div></header>
+        <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="이 기기 저장 상태"><HardDrive size={18} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={18} /></button></div></header>
 
         <div className="view-container">
           {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} scheduleBlocks={planner.scheduleBlocks} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} /> : null}
@@ -823,7 +827,7 @@ export function PlannerApp() {
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
-      {themeMenu ? <ThemeMenu theme={planner.theme} onChange={planner.setTheme} onClose={() => setThemeMenu(false)} /> : null}
+      {settingsOpen ? <SettingsSheet theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onClose={() => setSettingsOpen(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
     </main>
   );

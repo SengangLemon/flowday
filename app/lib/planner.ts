@@ -32,6 +32,7 @@ export type PlannerTask = {
   repeat: RepeatRule;
   completionDates: string[];
   occurrenceDate?: string;
+  goalId: string | null;
   goal: string;
   createdAt: number;
   updatedAt: number;
@@ -51,7 +52,7 @@ export type PlanGoal = {
 };
 
 export type PlannerState = {
-  version: 5;
+  version: 6;
   tasks: PlannerTask[];
   goals: PlanGoal[];
   scheduleBlocks: ScheduleBlock[];
@@ -210,6 +211,8 @@ export function normalizeTask(task: PlannerTask): PlannerTask {
     repeat: repeatRules.includes(task.repeat) ? task.repeat : 'none',
     completionDates: Array.isArray(task.completionDates) ? task.completionDates : [],
     occurrenceDate: undefined,
+    goalId: typeof task.goalId === 'string' && task.goalId ? task.goalId : null,
+    goal: typeof task.goal === 'string' ? task.goal : '',
   };
 }
 
@@ -284,6 +287,7 @@ export function createEmptyTask(date: string, start: string | null = null): Plan
     completed: false,
     repeat: 'none',
     completionDates: [],
+    goalId: null,
     goal: '',
     createdAt: now,
     updatedAt: now,

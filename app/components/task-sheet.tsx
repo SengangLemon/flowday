@@ -10,7 +10,6 @@ import {
   Goal,
   Repeat2,
   StickyNote,
-  Trash2,
   X,
 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
@@ -27,6 +26,7 @@ import {
   timeToMinutes,
 } from '../lib/planner';
 import { TimeChoice } from './time-choice';
+import { ConfirmDeleteButton } from './confirm-delete-button';
 
 type TaskSheetProps = {
   task: PlannerTask;
@@ -76,6 +76,7 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
     ? DURATION_OPTIONS
     : [...DURATION_OPTIONS, task.duration].sort((a, b) => a - b), [task.duration]);
   const repeatOption = REPEAT_RULES.find((item) => item.value === task.repeat) ?? REPEAT_RULES[0];
+  const linkedGoal = goals.find((goal) => goal.id === task.goalId);
   const endMinutes = timeToMinutes(task.start ?? '09:00') + task.duration;
   const endLabel = `${endMinutes >= 24 * 60 ? '다음 날 ' : ''}${clockTimeLabel(endMinutes)}`;
   const conflictingTasks = useMemo(() => {
@@ -100,6 +101,14 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
       ...current,
       project: projectName,
       color: project?.color ?? current.color,
+    }));
+  }
+
+  function handleGoal(goal: PlanGoal | null) {
+    setTask((current) => ({
+      ...current,
+      goalId: goal?.id ?? null,
+      goal: goal?.title ?? '',
     }));
   }
 
@@ -193,11 +202,11 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
           <section className="sheet-section">
             <h3>계획과 실행 기준</h3>
             <div className="choice-block goal-choice-block">
-              <header><span><Goal size={16} />연결 계획</span><strong>{task.goal || '연결 안 함'}</strong></header>
+              <header><span><Goal size={16} />연결 계획</span><strong>{linkedGoal?.title || task.goal || '연결 안 함'}</strong></header>
               {goals.length ? (
                 <div className="goal-choice-list" role="group" aria-label="연결 계획">
-                  <button type="button" aria-pressed={!task.goal} onClick={() => update('goal', '')}>연결 안 함</button>
-                  {goals.map((goal) => <button type="button" aria-pressed={task.goal === goal.title} key={goal.id} onClick={() => update('goal', goal.title)}><i className={goal.color} /><span><strong>{goal.title}</strong><small>{goal.period}{goal.parentId ? ' · 하위 계획' : ''}</small></span></button>)}
+                  <button type="button" aria-pressed={!task.goalId && !task.goal} onClick={() => handleGoal(null)}>연결 안 함</button>
+                  {goals.map((goal) => <button type="button" aria-pressed={task.goalId === goal.id || (!task.goalId && task.goal === goal.title)} key={goal.id} onClick={() => handleGoal(goal)}><i className={goal.color} /><span><strong>{goal.title}</strong><small>{goal.period}{goal.parentId ? ' · 하위 계획' : ''}</small></span></button>)}
                 </div>
               ) : <p className="empty-choice-copy">계획을 만들면 여기서 실행 항목과 바로 연결할 수 있습니다.</p>}
             </div>
@@ -208,7 +217,7 @@ export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isN
           {!isNew ? (
             <section className="sheet-secondary-actions">
               <button type="button" onClick={() => { onDuplicate(task.id); onClose(); }}><Copy size={17} />복제</button>
-              <button className="danger" type="button" onClick={() => { onDelete(task.id); onClose(); }}><Trash2 size={17} />삭제</button>
+              <ConfirmDeleteButton label="삭제" warning="완료 기록을 포함한 이 실행이 삭제됩니다." onConfirm={() => { onDelete(task.id); onClose(); }} />
             </section>
           ) : null}
         </div>

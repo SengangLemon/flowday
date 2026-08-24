@@ -1,8 +1,9 @@
 'use client';
 
-import { AlignLeft, Check, GitBranch, Repeat2, Target, Trash2, X } from 'lucide-react';
+import { AlignLeft, Check, GitBranch, Repeat2, Target, X } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 import { goalHorizon, GOAL_HORIZONS, GOAL_PERIODS, PlanGoal, TaskColor } from '../lib/planner';
+import { ConfirmDeleteButton } from './confirm-delete-button';
 
 type GoalSheetProps = {
   goal: PlanGoal;
@@ -95,7 +96,7 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
             <div className="color-picker"><span>색상</span><div>{COLORS.map((color) => <button className={`${color.id} ${goal.color === color.id ? 'selected' : ''}`} key={color.id} type="button" onClick={() => update('color', color.id)} aria-label={color.label}><Check size={13} /></button>)}</div></div>
           </section>
 
-          {!isNew ? <section className="sheet-secondary-actions one-action"><button className="danger" type="button" onClick={() => { onDelete(goal.id); onClose(); }}><Trash2 size={17} />이 계획과 하위 계획 삭제</button></section> : null}
+          {!isNew ? <section className="sheet-secondary-actions one-action"><ConfirmDeleteButton label="이 계획 삭제" warning="연결된 모든 하위 계획과 체크 기록도 함께 삭제됩니다." onConfirm={() => { onDelete(goal.id); onClose(); }} /></section> : null}
         </div>
 
         <footer className="sheet-footer"><button className="sheet-save-button" type="submit">{isNew ? (isRoot ? '계획 만들기' : '하위 계획 추가') : '변경사항 저장'}</button></footer>

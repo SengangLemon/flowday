@@ -14,81 +14,135 @@ import {
   Theme,
 } from '../lib/planner';
 
-const STORAGE_KEY = 'flowday:planner:v5';
-const BACKUP_STORAGE_KEY = 'flowday:planner:backup:v5';
+const STORAGE_KEY = 'flowday:planner:v6';
+const BACKUP_STORAGE_KEY = 'flowday:planner:backup:v6';
+const RECOVERY_STORAGE_KEY = 'flowday:planner:recovery:v6';
+const LEGACY_V5_STORAGE_KEY = 'flowday:planner:v5';
+const LEGACY_V5_BACKUP_STORAGE_KEY = 'flowday:planner:backup:v5';
 const LEGACY_V4_STORAGE_KEY = 'flowday:planner:v4';
 const LEGACY_V3_STORAGE_KEY = 'flowday:planner:v3';
 const LEGACY_V2_STORAGE_KEY = 'flowday:planner:v2';
 const subscribeToHydration = () => () => undefined;
 
-type LegacyState = {
-  version: 2 | 3;
-  tasks: PlannerTask[];
-  theme: Theme;
-};
+type StoredPlannerState = Omit<PlannerState, 'version'> & { version: 5 | 6 };
 
-type LegacyV4State = {
-  version: 4;
-  tasks: PlannerTask[];
-  goals: PlanGoal[];
-  theme: Theme;
+type PlannerBackup = {
+  format: 'flowday-backup';
+  schemaVersion: 6;
+  exportedAt: string;
+  data: PlannerState;
 };
 
 function defaultState(): PlannerState {
-  return { version: 5, tasks: [], goals: [], scheduleBlocks: [], theme: 'light' };
+  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light' };
 }
 
 function userCreatedTasks(tasks: PlannerTask[]) {
   return tasks.filter((task) => !task.id.startsWith('seed-')).map(normalizeTask);
 }
 
+function normalizeTheme(theme: unknown): Theme {
+  return theme === 'dim' || theme === 'dark' ? theme : 'light';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+
+function hasValidTaskShape(value: unknown) {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.title === 'string'
+    && typeof value.date === 'string'
+    && (value.start === null || typeof value.start === 'string')
+    && typeof value.duration === 'number';
+}
+
+function hasValidGoalShape(value: unknown) {
+  return isRecord(value) && typeof value.id === 'string' && typeof value.title === 'string';
+}
+
+function hasValidBlockShape(value: unknown) {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.start === 'string'
+    && typeof value.end === 'string';
+}
+
+function upgradeState(state: StoredPlannerState): PlannerState {
+  const goals = state.goals.map(normalizeGoal);
+  const goalIds = new Set(goals.map((goal) => goal.id));
+  const tasks = state.tasks.map(normalizeTask).map((task) => {
+    const linkedGoal = task.goalId && goalIds.has(task.goalId)
+      ? goals.find((goal) => goal.id === task.goalId)
+      : goals.find((goal) => goal.title === task.goal);
+    return {
+      ...task,
+      goalId: linkedGoal?.id ?? null,
+      goal: linkedGoal?.title ?? task.goal,
+    };
+  });
+  return {
+    version: 6,
+    tasks,
+    goals,
+    scheduleBlocks: state.scheduleBlocks,
+    theme: normalizeTheme(state.theme),
+  };
+}
+
+function parsePlannerState(value: unknown): PlannerState | null {
+  if (!value || typeof value !== 'object') return null;
+  const envelope = value as Partial<PlannerBackup>;
+  const candidate = envelope.format === 'flowday-backup' ? envelope.data : value;
+  if (!candidate || typeof candidate !== 'object') return null;
+  const state = candidate as Partial<StoredPlannerState>;
+
+  if ((state.version === 5 || state.version === 6) && Array.isArray(state.tasks) && Array.isArray(state.goals) && Array.isArray(state.scheduleBlocks)) {
+    if (!state.tasks.every(hasValidTaskShape) || !state.goals.every(hasValidGoalShape) || !state.scheduleBlocks.every(hasValidBlockShape)) return null;
+    return upgradeState(state as StoredPlannerState);
+  }
+
+  const legacy = candidate as {
+    version?: number;
+    tasks?: PlannerTask[];
+    goals?: PlanGoal[];
+    theme?: Theme;
+  };
+  if (legacy.version === 4 && Array.isArray(legacy.tasks) && Array.isArray(legacy.goals)) {
+    if (!legacy.tasks.every(hasValidTaskShape) || !legacy.goals.every(hasValidGoalShape)) return null;
+    return upgradeState({
+      version: 5,
+      tasks: legacy.tasks,
+      goals: legacy.goals,
+      scheduleBlocks: [],
+      theme: normalizeTheme(legacy.theme),
+    });
+  }
+  if ((legacy.version === 2 || legacy.version === 3) && Array.isArray(legacy.tasks)) {
+    if (!legacy.tasks.every(hasValidTaskShape)) return null;
+    return upgradeState({
+      version: 5,
+      tasks: userCreatedTasks(legacy.tasks),
+      goals: [],
+      scheduleBlocks: [],
+      theme: normalizeTheme(legacy.theme),
+    });
+  }
+  return null;
+}
+
 function readStoredState(): PlannerState {
-  try {
-    for (const key of [STORAGE_KEY, BACKUP_STORAGE_KEY]) {
+  for (const key of [STORAGE_KEY, BACKUP_STORAGE_KEY, LEGACY_V5_STORAGE_KEY, LEGACY_V5_BACKUP_STORAGE_KEY, LEGACY_V4_STORAGE_KEY, LEGACY_V3_STORAGE_KEY, LEGACY_V2_STORAGE_KEY]) {
+    try {
       const stored = window.localStorage.getItem(key);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as PlannerState;
-          if (parsed.version === 5 && Array.isArray(parsed.tasks) && Array.isArray(parsed.goals) && Array.isArray(parsed.scheduleBlocks)) {
-            return { ...parsed, tasks: parsed.tasks.map(normalizeTask), goals: parsed.goals.map(normalizeGoal) };
-          }
-        } catch {
-          // Try the backup copy before falling back to legacy data.
-        }
-      }
+      if (!stored) continue;
+      const parsed = parsePlannerState(JSON.parse(stored));
+      if (parsed) return parsed;
+    } catch {
+      // Try the next recovery or legacy copy.
     }
-
-    const legacyV4Stored = window.localStorage.getItem(LEGACY_V4_STORAGE_KEY);
-    if (legacyV4Stored) {
-      const legacy = JSON.parse(legacyV4Stored) as LegacyV4State;
-      if (legacy.version === 4 && Array.isArray(legacy.tasks) && Array.isArray(legacy.goals)) {
-        return {
-          version: 5,
-          tasks: legacy.tasks.map(normalizeTask),
-          goals: legacy.goals.map(normalizeGoal),
-          scheduleBlocks: [],
-          theme: legacy.theme ?? 'light',
-        };
-      }
-    }
-
-    for (const key of [LEGACY_V3_STORAGE_KEY, LEGACY_V2_STORAGE_KEY]) {
-      const legacyStored = window.localStorage.getItem(key);
-      if (legacyStored) {
-        const legacy = JSON.parse(legacyStored) as LegacyState;
-        if ((legacy.version === 2 || legacy.version === 3) && Array.isArray(legacy.tasks)) {
-          return {
-            version: 5,
-            tasks: userCreatedTasks(legacy.tasks),
-            goals: [],
-            scheduleBlocks: [],
-            theme: legacy.theme ?? 'light',
-          };
-        }
-      }
-    }
-  } catch {
-    // The app stays usable when storage is blocked or malformed.
   }
 
   return defaultState();
@@ -212,7 +266,10 @@ export function usePlanner() {
       const nextGoals = exists
         ? current.goals.map((item) => item.id === goal.id ? saved : item)
         : [...current.goals, saved];
-      return { ...current, goals: nextGoals };
+      const nextTasks = current.tasks.map((task) => task.goalId === saved.id
+        ? { ...task, goal: saved.title, updatedAt: Date.now() }
+        : task);
+      return { ...current, goals: nextGoals, tasks: nextTasks };
     });
   }, [commit]);
 
@@ -229,7 +286,13 @@ export function usePlanner() {
           }
         }
       }
-      return { ...current, goals: current.goals.filter((goal) => !remove.has(goal.id)) };
+      return {
+        ...current,
+        goals: current.goals.filter((goal) => !remove.has(goal.id)),
+        tasks: current.tasks.map((task) => task.goalId && remove.has(task.goalId)
+          ? { ...task, goalId: null, goal: '', updatedAt: Date.now() }
+          : task),
+      };
     });
   }, [commit]);
 
@@ -264,6 +327,56 @@ export function usePlanner() {
     commit((current) => ({ ...current, theme: nextTheme }));
   }, [commit]);
 
+  const exportBackup = useCallback(() => {
+    const backup: PlannerBackup = {
+      format: 'flowday-backup',
+      schemaVersion: 6,
+      exportedAt: new Date().toISOString(),
+      data: stateRef.current,
+    };
+    return JSON.stringify(backup, null, 2);
+  }, []);
+
+  const importBackup = useCallback((raw: string) => {
+    try {
+      const next = parsePlannerState(JSON.parse(raw));
+      if (!next) return { ok: false as const, message: 'Flowday 백업 파일 형식을 확인해주세요.' };
+      try {
+        window.localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(stateRef.current));
+      } catch {
+        // Import can continue in memory even when recovery storage is unavailable.
+      }
+      commit(() => next);
+      return { ok: true as const, message: `${next.tasks.length}개 할 일, ${next.goals.length}개 계획을 복구했습니다.` };
+    } catch {
+      return { ok: false as const, message: '파일을 읽을 수 없습니다. JSON 백업 파일인지 확인해주세요.' };
+    }
+  }, [commit]);
+
+  const restoreRecovery = useCallback(() => {
+    try {
+      const stored = window.localStorage.getItem(RECOVERY_STORAGE_KEY);
+      if (!stored) return { ok: false as const, message: '되돌릴 데이터가 없습니다.' };
+      const previous = parsePlannerState(JSON.parse(stored));
+      if (!previous) return { ok: false as const, message: '복구 데이터가 손상되었습니다.' };
+      const current = stateRef.current;
+      window.localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(current));
+      commit(() => previous);
+      return { ok: true as const, message: '직전 데이터로 되돌렸습니다.' };
+    } catch {
+      return { ok: false as const, message: '복구 저장소를 사용할 수 없습니다.' };
+    }
+  }, [commit]);
+
+  const resetPlanner = useCallback(() => {
+    try {
+      window.localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(stateRef.current));
+    } catch {
+      // Reset remains available even when recovery storage is unavailable.
+    }
+    commit(() => defaultState());
+  }, [commit]);
+
   const todayTasks = useMemo(() => tasksForDate(tasks, today), [tasks, today]);
   const completedToday = useMemo(
     () => todayTasks.filter((task) => taskCompletedOn(task, today)).length,
@@ -292,5 +405,9 @@ export function usePlanner() {
     upsertScheduleBlock,
     deleteScheduleBlock,
     setTheme,
+    exportBackup,
+    importBackup,
+    restoreRecovery,
+    resetPlanner,
   };
 }

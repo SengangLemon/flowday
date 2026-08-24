@@ -9,8 +9,16 @@ export const metadata: Metadata = {
         : 'http://localhost:3000'),
   ),
   title: 'Flowday — 목표가 오늘이 되는 곳',
+  applicationName: 'Flowday',
   description: '장기 목표를 오늘의 시간표와 집중 실행으로 연결하는 생활 관리 앱',
   manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Flowday',
+  },
+  formatDetection: { telephone: false },
+  robots: { index: true, follow: true },
   icons: {
     icon: [
       { url: '/flowday-icon-192.png', type: 'image/png', sizes: '192x192' },
