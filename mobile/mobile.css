@@ -5,6 +5,9 @@ body { margin: 0; min-width: 0; overflow-x: hidden; -webkit-user-select: none; u
 input, textarea, [contenteditable='true'] { -webkit-user-select: text; user-select: text; }
 button, a { -webkit-tap-highlight-color: transparent; }
 .native-auth-page { min-height: 100dvh; padding-top: max(18px, env(safe-area-inset-top)); padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.native-auth-text-action { justify-self: end; margin-top: -7px; padding: 3px 2px; border: 0; background: transparent; color: #557561; font-size: 10px; font-weight: 700; text-underline-offset: 3px; }
+.native-auth-text-action:active { opacity: .62; }
+.native-auth-back { min-height: 38px; border: 0; background: transparent; color: #707a73; font-size: 10px; font-weight: 650; }
 .planner-shell { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 .mobile-bottom-nav { bottom: max(7px, env(safe-area-inset-bottom)); }
 .mobile-fab { touch-action: manipulation; }
