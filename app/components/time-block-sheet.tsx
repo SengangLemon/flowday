@@ -77,7 +77,7 @@ export function TimeBlockSheet({ block: initialBlock, isNew, onClose, onSave, on
               <i aria-hidden="true" />
               <button type="button" role="tab" aria-selected={activeTime === 'end'} onClick={() => setActiveTime('end')}><span>종료</span><strong>{block.end}</strong></button>
             </div>
-            <TimeChoice value={block[activeTime]} onChange={(value) => update(activeTime, value)} label={activeTime === 'start' ? '시작 시간' : '종료 시간'} />
+            <TimeChoice key={activeTime} value={block[activeTime]} onChange={(value) => update(activeTime, value)} label={activeTime === 'start' ? '시작 시간' : '종료 시간'} />
             <p className="time-block-duration"><Clock3 size={14} />{timeToMinutes(block.end) > timeToMinutes(block.start) ? durationLabel(scheduleBlockDuration(block)) : '시간 범위를 확인해주세요'}</p>
           </section>
 

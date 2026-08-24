@@ -21,6 +21,7 @@ import {
   PROJECTS,
   Quadrant,
   REPEAT_RULES,
+  ScheduleBlock,
   TaskColor,
   tasksForDate,
   timeToMinutes,
@@ -31,6 +32,7 @@ type TaskSheetProps = {
   task: PlannerTask;
   tasks: PlannerTask[];
   goals: PlanGoal[];
+  scheduleBlocks: ScheduleBlock[];
   isNew: boolean;
   onClose: () => void;
   onSave: (task: PlannerTask) => void;
@@ -67,7 +69,7 @@ function clockTimeLabel(totalMinutes: number) {
   return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
 }
 
-export function TaskSheet({ task: initialTask, tasks, goals, isNew, onClose, onSave, onDelete, onDuplicate }: TaskSheetProps) {
+export function TaskSheet({ task: initialTask, tasks, goals, scheduleBlocks, isNew, onClose, onSave, onDelete, onDuplicate }: TaskSheetProps) {
   const [task, setTask] = useState(initialTask);
   const [timed, setTimed] = useState(initialTask.start !== null);
   const durationOptions = useMemo(() => DURATION_OPTIONS.includes(task.duration)
@@ -148,7 +150,7 @@ export function TaskSheet({ task: initialTask, tasks, goals, isNew, onClose, onS
             </div>
             {timed ? (
               <div className="schedule-choice-panel">
-                <TimeChoice value={task.start ?? '09:00'} onChange={(value) => update('start', value)} label="시작 시간" />
+                <TimeChoice value={task.start ?? '09:00'} onChange={(value) => update('start', value)} label="시작 시간" suggestedTimes={scheduleBlocks.map((block) => block.start)} />
                 <div className="choice-block">
                   <header><span>실행 길이</span><strong>{durationLabel(task.duration)}</strong></header>
                   <div className="choice-scroll" role="group" aria-label="실행 길이">
