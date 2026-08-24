@@ -15,22 +15,22 @@ import {
 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 import {
+  PlanGoal,
   PlannerTask,
   Priority,
   PROJECTS,
   Quadrant,
   REPEAT_RULES,
-  RepeatRule,
-  shiftDate,
   TaskColor,
   tasksForDate,
   timeToMinutes,
 } from '../lib/planner';
+import { TimeChoice } from './time-choice';
 
 type TaskSheetProps = {
   task: PlannerTask;
   tasks: PlannerTask[];
-  today: string;
+  goals: PlanGoal[];
   isNew: boolean;
   onClose: () => void;
   onSave: (task: PlannerTask) => void;
@@ -46,16 +46,14 @@ const COLORS: { id: TaskColor; label: string }[] = [
   { id: 'rose', label: '로즈' },
 ];
 
-const QUADRANT_OPTIONS: { value: Quadrant; label: string }[] = [
-  { value: 'do', label: '중요 · 긴급' },
-  { value: 'schedule', label: '중요 · 여유' },
-  { value: 'delegate', label: '긴급 · 위임' },
-  { value: 'delete', label: '나중에 검토' },
+const QUADRANT_OPTIONS: { value: Quadrant; label: string; hint: string }[] = [
+  { value: 'do', label: '지금 실행', hint: '중요 · 긴급' },
+  { value: 'schedule', label: '시간 배치', hint: '중요 · 여유' },
+  { value: 'delegate', label: '위임', hint: '긴급 · 덜 중요' },
+  { value: 'delete', label: '보류', hint: '나중에 검토' },
 ];
 
 const DURATION_OPTIONS = [15, 25, 30, 45, 60, 90, 120, 180, 240, 360, 480];
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, '0'));
-const DEFAULT_MINUTE_OPTIONS = ['00', '15', '30', '45'];
 
 function durationLabel(minutes: number) {
   const hours = Math.floor(minutes / 60);
@@ -64,26 +62,17 @@ function durationLabel(minutes: number) {
   return `${hours}시간${rest ? ` ${rest}분` : ''}`;
 }
 
-function hourLabel(value: string) {
-  const hour = Number(value);
-  return `${hour < 12 ? '오전' : '오후'} ${hour % 12 || 12}시`;
-}
-
 function clockTimeLabel(totalMinutes: number) {
   const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
   return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
 }
 
-export function TaskSheet({ task: initialTask, tasks, today, isNew, onClose, onSave, onDelete, onDuplicate }: TaskSheetProps) {
+export function TaskSheet({ task: initialTask, tasks, goals, isNew, onClose, onSave, onDelete, onDuplicate }: TaskSheetProps) {
   const [task, setTask] = useState(initialTask);
   const [timed, setTimed] = useState(initialTask.start !== null);
-  const [startHour, startMinute] = (task.start ?? '09:00').split(':');
   const durationOptions = useMemo(() => DURATION_OPTIONS.includes(task.duration)
     ? DURATION_OPTIONS
     : [...DURATION_OPTIONS, task.duration].sort((a, b) => a - b), [task.duration]);
-  const minuteOptions = useMemo(() => DEFAULT_MINUTE_OPTIONS.includes(startMinute)
-    ? DEFAULT_MINUTE_OPTIONS
-    : [...DEFAULT_MINUTE_OPTIONS, startMinute].sort(), [startMinute]);
   const repeatOption = REPEAT_RULES.find((item) => item.value === task.repeat) ?? REPEAT_RULES[0];
   const endMinutes = timeToMinutes(task.start ?? '09:00') + task.duration;
   const endLabel = `${endMinutes >= 24 * 60 ? '다음 날 ' : ''}${clockTimeLabel(endMinutes)}`;
@@ -101,10 +90,6 @@ export function TaskSheet({ task: initialTask, tasks, today, isNew, onClose, onS
 
   function update<K extends keyof PlannerTask>(key: K, value: PlannerTask[K]) {
     setTask((current) => ({ ...current, [key]: value }));
-  }
-
-  function updateStart(nextHour: string, nextMinute: string) {
-    update('start', `${nextHour}:${nextMinute}`);
   }
 
   function handleProject(projectName: string) {
@@ -132,8 +117,8 @@ export function TaskSheet({ task: initialTask, tasks, today, isNew, onClose, onS
         <header className="sheet-header">
           <button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button>
           <div>
-            <span className="overline">{isNew ? 'NEW TASK' : 'TASK DETAILS'}</span>
-            <h2 id="task-sheet-title">{isNew ? '새 할 일 만들기' : '할 일 수정하기'}</h2>
+            <span className="overline">{isNew ? 'NEW EXECUTION' : 'EXECUTION DETAILS'}</span>
+            <h2 id="task-sheet-title">{isNew ? '새 실행 만들기' : '실행 수정하기'}</h2>
           </div>
           <button className="save-icon-button" type="submit" aria-label="저장"><Check size={19} /></button>
         </header>
@@ -145,64 +130,76 @@ export function TaskSheet({ task: initialTask, tasks, today, isNew, onClose, onS
               autoFocus
               value={task.title}
               onChange={(event) => update('title', event.target.value)}
-              placeholder="무엇을 할까요?"
-              aria-label="할 일 제목"
+              placeholder="무엇을 실행할까요?"
+              aria-label="실행 제목"
             />
           </label>
 
           <section className="sheet-section">
-            <h3>일정</h3>
+            <h3>언제 실행하나요</h3>
             <div className="field-row">
               <CalendarDays size={18} />
               <label><span>날짜</span><input type="date" value={task.date} onChange={(event) => update('date', event.target.value)} /></label>
             </div>
-            <div className="date-shortcuts" aria-label="빠른 날짜 선택">
-              {[{ label: '오늘', date: today }, { label: '내일', date: shiftDate(today, 1) }, { label: '일주일 뒤', date: shiftDate(today, 7) }].map((item) => (
-                <button className={task.date === item.date ? 'selected' : ''} type="button" key={item.label} onClick={() => update('date', item.date)}>{item.label}</button>
-              ))}
-            </div>
             <div className="field-row field-row-toggle">
               <Clock3 size={18} />
-              <div><strong>시간 블록</strong><small>시간표에 배치하기</small></div>
-              <button className={`switch ${timed ? 'on' : ''}`} type="button" role="switch" aria-checked={timed} onClick={() => setTimed((value) => !value)}><i /></button>
+              <div><strong>타임라인에 배치</strong><small>끄면 인박스 할 일로 저장됩니다.</small></div>
+              <button className={`switch ${timed ? 'on' : ''}`} type="button" role="switch" aria-label="타임라인에 배치" aria-checked={timed} onClick={() => setTimed((value) => !value)}><i /></button>
             </div>
             {timed ? (
-              <>
-                <div className="field-pair">
-                  <div className="time-choice-field"><span>시작 시간</span><div><select aria-label="시작 시" value={startHour} onChange={(event) => updateStart(event.target.value, startMinute)}>{HOUR_OPTIONS.map((hour) => <option value={hour} key={hour}>{hourLabel(hour)}</option>)}</select><b>:</b><select aria-label="시작 분" value={startMinute} onChange={(event) => updateStart(startHour, event.target.value)}>{minuteOptions.map((minute) => <option value={minute} key={minute}>{minute}분</option>)}</select></div></div>
-                  <label><span>길이 선택</span><select aria-label="작업 길이" value={task.duration} onChange={(event) => update('duration', Number(event.target.value))}>{durationOptions.map((minutes) => <option value={minutes} key={minutes}>{durationLabel(minutes)}</option>)}</select></label>
+              <div className="schedule-choice-panel">
+                <TimeChoice value={task.start ?? '09:00'} onChange={(value) => update('start', value)} label="시작 시간" />
+                <div className="choice-block">
+                  <header><span>실행 길이</span><strong>{durationLabel(task.duration)}</strong></header>
+                  <div className="choice-scroll" role="group" aria-label="실행 길이">
+                    {durationOptions.map((minutes) => <button type="button" aria-pressed={task.duration === minutes} key={minutes} onClick={() => update('duration', minutes)}>{durationLabel(minutes)}</button>)}
+                  </div>
                 </div>
                 <p className="time-end-preview"><Clock3 size={13} />{task.start ?? '09:00'} 시작 · {endLabel} 종료 예정</p>
                 {conflictingTasks.length ? <p className="schedule-warning" role="status"><Clock3 size={13} />같은 시간에 {conflictingTasks.slice(0, 2).map((item) => item.title).join(', ')} 일정이 있습니다.</p> : null}
-              </>
+              </div>
             ) : null}
-            <div className="field-row">
-              <Repeat2 size={18} />
-              <label><span>반복</span><select aria-label="반복" value={task.repeat} onChange={(event) => update('repeat', event.target.value as RepeatRule)}>{REPEAT_RULES.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+            <div className="choice-block repeat-choice-block">
+              <header><span><Repeat2 size={16} />반복</span><strong>{repeatOption.label}</strong></header>
+              <div className="choice-scroll" role="group" aria-label="반복">
+                {REPEAT_RULES.map((option) => <button type="button" aria-pressed={task.repeat === option.value} key={option.value} onClick={() => update('repeat', option.value)}>{option.label}</button>)}
+              </div>
+              {task.repeat !== 'none' ? <p className="repeat-hint"><Repeat2 size={13} />{repeatOption.hint}</p> : null}
             </div>
-            {task.repeat !== 'none' ? <p className="repeat-hint"><Repeat2 size={13} />{repeatOption.hint}</p> : null}
           </section>
 
           <section className="sheet-section">
-            <h3>분류</h3>
-            <div className="field-row">
-              <Folder size={18} />
-              <label><span>프로젝트</span><select value={task.project} onChange={(event) => handleProject(event.target.value)}>{PROJECTS.map((project) => <option key={project.name}>{project.name}</option>)}</select></label>
+            <h3>어디에 두나요</h3>
+            <div className="choice-block">
+              <header><span><Folder size={16} />프로젝트</span><strong>{task.project}</strong></header>
+              <div className="project-choice-grid" role="group" aria-label="프로젝트">
+                {PROJECTS.map((project) => <button type="button" aria-pressed={task.project === project.name} key={project.name} onClick={() => handleProject(project.name)}><i className={project.color} />{project.name}</button>)}
+              </div>
             </div>
             <div className="field-row priority-field">
               <Flag size={18} />
-              <div><strong>우선순위</strong><div className="priority-options">{([1, 2, 3, 4] as Priority[]).map((priority) => <button className={task.priority === priority ? `p${priority} selected` : `p${priority}`} key={priority} type="button" onClick={() => update('priority', priority)}>P{priority}</button>)}</div></div>
+              <div><strong>우선순위</strong><div className="priority-options">{([1, 2, 3, 4] as Priority[]).map((priority) => <button className={task.priority === priority ? `p${priority} selected` : `p${priority}`} aria-pressed={task.priority === priority} key={priority} type="button" onClick={() => update('priority', priority)}>P{priority}</button>)}</div></div>
             </div>
-            <div className="field-row">
-              <Goal size={18} />
-              <label><span>아이젠하워</span><select value={task.quadrant} onChange={(event) => update('quadrant', event.target.value as Quadrant)}>{QUADRANT_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+            <div className="choice-block matrix-choice-block">
+              <header><span><Goal size={16} />아이젠하워</span></header>
+              <div className="matrix-choice-grid" role="group" aria-label="아이젠하워 매트릭스">
+                {QUADRANT_OPTIONS.map((option) => <button type="button" aria-pressed={task.quadrant === option.value} key={option.value} onClick={() => update('quadrant', option.value)}><strong>{option.label}</strong><small>{option.hint}</small></button>)}
+              </div>
             </div>
           </section>
 
           <section className="sheet-section">
-            <h3>세부 정보</h3>
-            <label className="notes-field"><StickyNote size={18} /><textarea value={task.notes} onChange={(event) => update('notes', event.target.value)} placeholder="메모나 실행 기준을 적어보세요" rows={3} /></label>
-            <label className="goal-field"><Goal size={18} /><input value={task.goal} onChange={(event) => update('goal', event.target.value)} placeholder="연결할 계획 이름" /></label>
+            <h3>계획과 실행 기준</h3>
+            <div className="choice-block goal-choice-block">
+              <header><span><Goal size={16} />연결 계획</span><strong>{task.goal || '연결 안 함'}</strong></header>
+              {goals.length ? (
+                <div className="goal-choice-list" role="group" aria-label="연결 계획">
+                  <button type="button" aria-pressed={!task.goal} onClick={() => update('goal', '')}>연결 안 함</button>
+                  {goals.map((goal) => <button type="button" aria-pressed={task.goal === goal.title} key={goal.id} onClick={() => update('goal', goal.title)}><i className={goal.color} /><span><strong>{goal.title}</strong><small>{goal.period}{goal.parentId ? ' · 하위 계획' : ''}</small></span></button>)}
+                </div>
+              ) : <p className="empty-choice-copy">계획을 만들면 여기서 실행 항목과 바로 연결할 수 있습니다.</p>}
+            </div>
+            <label className="notes-field"><StickyNote size={18} /><textarea value={task.notes} onChange={(event) => update('notes', event.target.value)} placeholder="메모, 완료 기준, 다음 행동을 적어보세요" rows={3} /></label>
             <div className="color-picker"><span>색상</span><div>{COLORS.map((color) => <button className={`${color.id} ${task.color === color.id ? 'selected' : ''}`} key={color.id} type="button" onClick={() => update('color', color.id)} aria-label={color.label}><Check size={13} /></button>)}</div></div>
           </section>
 
@@ -215,7 +212,7 @@ export function TaskSheet({ task: initialTask, tasks, today, isNew, onClose, onS
         </div>
 
         <footer className="sheet-footer">
-          <button className="sheet-save-button" type="submit">{isNew ? '할 일 추가' : '변경사항 저장'}</button>
+          <button className="sheet-save-button" type="submit">{isNew ? '실행 추가' : '변경사항 저장'}</button>
         </footer>
       </form>
     </div>

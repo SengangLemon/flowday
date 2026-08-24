@@ -70,9 +70,21 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
 
           <section className="sheet-section">
             <h3>계획 구조</h3>
-            <div className="field-row"><Target size={18} /><label><span>기간</span><input list="goal-period-options" value={goal.period} onChange={(event) => update('period', event.target.value)} placeholder="예: 5개월, 10일" aria-label="계획 기간" /><datalist id="goal-period-options">{GOAL_PERIODS.map((period) => <option value={period} key={period} />)}</datalist></label></div>
-            <div className="field-row"><GitBranch size={18} /><label><span>상위 계획</span><select value={goal.parentId ?? ''} onChange={(event) => update('parentId', event.target.value || null)}><option value="">최상위 계획</option>{parentOptions.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label></div>
-            <div className="field-row field-row-toggle"><Repeat2 size={18} /><div><strong>매일 체크</strong><small>잔디 기록에 매일 쌓기</small></div><button className={`switch ${goal.daily ? 'on' : ''}`} type="button" role="switch" aria-checked={goal.daily} onClick={() => update('daily', !goal.daily)}><i /></button></div>
+            <div className="choice-block">
+              <header><span><Target size={16} />기간</span><strong>{goal.period || '직접 입력'}</strong></header>
+              <div className="choice-scroll" role="group" aria-label="계획 기간">
+                {GOAL_PERIODS.map((period) => <button type="button" aria-pressed={goal.period === period} value={period} key={period} onClick={() => update('period', period)}>{period}</button>)}
+              </div>
+              <label className="custom-period-field"><span>직접 입력</span><input value={goal.period} onChange={(event) => update('period', event.target.value)} placeholder="예: 5개월, 10일" aria-label="계획 기간 직접 입력" /></label>
+            </div>
+            <div className="choice-block goal-parent-choice">
+              <header><span><GitBranch size={16} />상위 계획</span><strong>{parentOptions.find((item) => item.id === goal.parentId)?.title ?? '최상위 계획'}</strong></header>
+              <div className="goal-choice-list" role="group" aria-label="상위 계획">
+                <button type="button" aria-pressed={goal.parentId === null} onClick={() => update('parentId', null)}>최상위 계획</button>
+                {parentOptions.map((item) => <button type="button" aria-pressed={goal.parentId === item.id} key={item.id} onClick={() => update('parentId', item.id)}><i className={item.color} /><span><strong>{item.title}</strong><small>{item.period}</small></span></button>)}
+              </div>
+            </div>
+            <div className="field-row field-row-toggle"><Repeat2 size={18} /><div><strong>매일 체크</strong><small>잔디 기록에 매일 쌓기</small></div><button className={`switch ${goal.daily ? 'on' : ''}`} type="button" role="switch" aria-label="매일 체크" aria-checked={goal.daily} onClick={() => update('daily', !goal.daily)}><i /></button></div>
           </section>
 
           <section className="sheet-section">

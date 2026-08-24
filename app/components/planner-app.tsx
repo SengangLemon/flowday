@@ -31,6 +31,7 @@ import {
   Sun,
   Target,
   TimerReset,
+  X,
 } from 'lucide-react';
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
 import { usePlanner } from '../hooks/use-planner';
@@ -193,8 +194,8 @@ function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, on
     <div className="today-view habit-view">
       <WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />
       <section className="day-hero">
-        <div><span className="overline">{selectedDate === today ? 'DAILY RHYTHM' : 'SELECTED DAY'}</span><h1>{formatDateLabel(selectedDate)}</h1><p>{timed.length ? `${timed.length}개 습관·블록 중 ${completed}개를 마쳤어요.` : '인박스의 할 일을 가져오거나 새 습관을 만들어보세요.'}</p></div>
-        <div className="day-score"><strong>{completion}%</strong><span>완료</span><div><i style={{ width: `${completion}%` }} /></div></div>
+        <div><span className="overline">{selectedDate === today ? 'DAILY RHYTHM' : 'SELECTED DAY'}</span><h1>{formatDateLabel(selectedDate)}</h1><p>{timed.length ? '오늘의 흐름을 하나씩 실행해보세요.' : '인박스의 할 일을 가져오거나 새 습관을 만들어보세요.'}</p></div>
+        {timed.length ? <div className="day-progress"><span>{completed} / {timed.length} 완료</span><div><i style={{ width: `${completion}%` }} /></div></div> : null}
       </section>
 
       <section className="habit-inbox-callout">
@@ -644,7 +645,18 @@ function FocusView({ today, tasks, selectedTaskId, onSelect, onComplete }: Focus
   return (
     <div className="content-view focus-view-v2">
       <header className="view-intro"><div><span className="overline">FOCUS MODE</span><h1>집중</h1><p>지금 필요한 한 가지에만 조용히 몰입하세요.</p></div></header>
-      <div className="focus-layout"><section className="focus-main-card"><div className="segmented-control"><button className={mode === 'focus' ? 'active' : ''} onClick={() => setTimerMode('focus')}>집중 25분</button><button className={mode === 'break' ? 'active' : ''} onClick={() => setTimerMode('break')}>휴식 5분</button></div><div className="focus-timer" style={{ '--focus-progress': `${progress}deg` } as CSSProperties}><div><strong>{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</strong><span>{running ? '흐름을 유지하세요' : '준비되면 시작하세요'}</span></div></div><label className="focus-task-picker"><i className={task?.color ?? 'sage'} /><span>집중할 작업</span><select value={task?.id ?? ''} onChange={(event) => onSelect(event.target.value)}><option value="">{focusable.length ? '작업 선택' : '오늘 배치된 작업 없음'}</option>{focusable.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label><div className="focus-actions"><button className="icon-button" onClick={() => { setRunning(false); setSeconds(total); }} aria-label="타이머 초기화"><TimerReset size={18} /></button><button className="focus-start" onClick={() => setRunning((value) => !value)}>{running ? '잠시 멈춤' : '집중 시작'}</button>{task ? <button className="icon-button" onClick={() => onComplete(task.id, task.occurrenceDate)} aria-label="작업 완료"><Check size={18} /></button> : null}</div></section><aside className="focus-stats"><article><Sparkles size={19} /><span>오늘 완료 블록</span><strong>{durationLabel(completedToday.reduce((sum, item) => sum + item.duration, 0))}</strong><p>{completedToday.length}개의 실제 완료 기록</p></article><article><BarChart3 size={19} /><span>최근 7일 완료 블록</span><strong>{durationLabel(weekCompleted.reduce((sum, item) => sum + item.duration, 0))}</strong><p>{weekCompleted.length}개의 실제 완료 기록</p></article></aside></div>
+      <div className="focus-layout">
+        <section className="focus-main-card">
+          <div className="segmented-control"><button className={mode === 'focus' ? 'active' : ''} onClick={() => setTimerMode('focus')}>집중 25분</button><button className={mode === 'break' ? 'active' : ''} onClick={() => setTimerMode('break')}>휴식 5분</button></div>
+          <div className="focus-timer" style={{ '--focus-progress': `${progress}deg` } as CSSProperties}><div><strong>{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</strong><span>{running ? '흐름을 유지하세요' : '준비되면 시작하세요'}</span></div></div>
+          <div className="focus-task-picker">
+            <header><i className={task?.color ?? 'sage'} /><span>집중할 실행</span></header>
+            {focusable.length ? <div className="focus-task-options" role="group" aria-label="집중할 실행">{focusable.map((item) => <button type="button" aria-pressed={task?.id === item.id} key={item.id} onClick={() => onSelect(item.id)}>{item.title}</button>)}</div> : <p>오늘 배치된 실행이 없습니다.</p>}
+          </div>
+          <div className="focus-actions"><button className="icon-button" onClick={() => { setRunning(false); setSeconds(total); }} aria-label="타이머 초기화"><TimerReset size={18} /></button><button className="focus-start" onClick={() => setRunning((value) => !value)}>{running ? '잠시 멈춤' : '집중 시작'}</button>{task ? <button className="icon-button" onClick={() => onComplete(task.id, task.occurrenceDate)} aria-label="작업 완료"><Check size={18} /></button> : null}</div>
+        </section>
+        <aside className="focus-stats"><article><Sparkles size={19} /><span>오늘 완료 블록</span><strong>{durationLabel(completedToday.reduce((sum, item) => sum + item.duration, 0))}</strong><p>{completedToday.length}개의 실제 완료 기록</p></article><article><BarChart3 size={19} /><span>최근 7일 완료 블록</span><strong>{durationLabel(weekCompleted.reduce((sum, item) => sum + item.duration, 0))}</strong><p>{weekCompleted.length}개의 실제 완료 기록</p></article></aside>
+      </div>
     </div>
   );
 }
@@ -678,9 +690,34 @@ function SearchOverlay({ query, tasks, goals, blocks, onQueryChange, onClose, on
   return <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div><header><Search size={18} /><input autoFocus value={query} placeholder="할 일, 계획, 시간 블록 검색" onChange={(event) => onQueryChange(event.target.value)} /><button type="button" onClick={onClose}>ESC</button></header>{!normalizedQuery ? <p>제목, 프로젝트, 메모와 계획을 한 번에 검색할 수 있습니다.</p> : null}{normalizedQuery && !hasResults ? <p>일치하는 항목이 없습니다.</p> : null}{taskResults.length ? <div className="search-result-group"><strong>할 일</strong>{taskResults.map((task) => <button type="button" key={task.id} onClick={() => onOpenTask(task)}><i className={task.color} /><span><b>{task.title}</b><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div> : null}{goalResults.length ? <div className="search-result-group"><strong>계획</strong>{goalResults.map((goal) => <button type="button" key={goal.id} onClick={() => onOpenGoal(goal)}><i className={goal.color} /><span><b>{goal.title}</b><small>{goal.period} · {goal.parentId ? '하위 계획' : '최상위 계획'}</small></span><Target size={15} /></button>)}</div> : null}{blockResults.length ? <div className="search-result-group"><strong>시간 블록</strong>{blockResults.map((block) => <button type="button" key={block.id} onClick={() => onOpenBlock(block)}><i className={block.color} /><span><b>{block.name}</b><small>{block.start}–{block.end}</small></span><Clock3 size={15} /></button>)}</div> : null}</div></div>;
 }
 
+type CreateHubProps = {
+  onClose: () => void;
+  onTask: () => void;
+  onBlock: () => void;
+  onGoal: () => void;
+};
+
+function CreateHub({ onClose, onTask, onBlock, onGoal }: CreateHubProps) {
+  const actions = [
+    { title: '실행 · 할 일', description: '인박스에 두거나 원하는 시간에 바로 배치', icon: CheckCircle2, action: onTask },
+    { title: '시간 블록', description: '반복해서 쓰는 나만의 시간대 틀 만들기', icon: Clock3, action: onBlock },
+    { title: '계획', description: '장기 목표와 하위 계획을 계층으로 연결', icon: Target, action: onGoal },
+  ];
+
+  return (
+    <div className="create-hub-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="create-hub" role="dialog" aria-modal="true" aria-labelledby="create-hub-title">
+        <div className="sheet-handle" aria-hidden="true" />
+        <header><div><span className="overline">QUICK CREATE</span><h2 id="create-hub-title">무엇을 관리할까요?</h2><p>실행, 시간, 계획을 같은 흐름에서 연결합니다.</p></div><button className="icon-button ghost" type="button" onClick={onClose} aria-label="닫기"><X size={20} /></button></header>
+        <div className="create-hub-actions">{actions.map(({ title, description, icon: Icon, action }) => <button type="button" key={title} onClick={action}><span><Icon size={20} /></span><div><strong>{title}</strong><small>{description}</small></div><ArrowRight size={17} /></button>)}</div>
+      </section>
+    </div>
+  );
+}
+
 type BottomNavProps = { active: PlannerView; onChange: (view: PlannerView) => void; onAdd: () => void };
 function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
-  return <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">{NAV_ITEMS.slice(0, 3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}<button className="mobile-fab" onClick={onAdd} aria-label="새 할 일 추가"><Plus size={23} /></button>{NAV_ITEMS.slice(3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>;
+  return <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">{NAV_ITEMS.slice(0, 3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}<button className="mobile-fab" onClick={onAdd} aria-label="새로 만들기"><Plus size={23} /></button>{NAV_ITEMS.slice(3).map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}><Icon size={20} /><span>{label}</span></button>)}</nav>;
 }
 
 export function PlannerApp() {
@@ -691,6 +728,7 @@ export function PlannerApp() {
   const [goalEditor, setGoalEditor] = useState<GoalEditorState>(null);
   const [timeBlockEditor, setTimeBlockEditor] = useState<TimeBlockEditorState>(null);
   const [themeMenu, setThemeMenu] = useState(false);
+  const [createHubOpen, setCreateHubOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
@@ -703,6 +741,7 @@ export function PlannerApp() {
         setSearchOpen(true);
       }
       if (event.key === 'Escape') {
+        setCreateHubOpen(false);
         setSearchOpen(false);
         setSearchQuery('');
       }
@@ -714,14 +753,16 @@ export function PlannerApp() {
   function closeSearch() { setSearchOpen(false); setSearchQuery(''); }
 
   function openNew(date = activeDate, start: string | null = null, goal?: string) {
+    setCreateHubOpen(false);
     const task = createEmptyTask(date, start);
     setEditor({ task: goal ? { ...task, goal } : task, isNew: true });
   }
   function openEdit(task: PlannerTask) { setEditor({ task, isNew: false }); }
   function scheduleFromInbox(task: PlannerTask, date: string) { setEditor({ task: { ...task, date, start: '09:00' }, isNew: false }); }
-  function openNewGoal(parentId: string | null) { setGoalEditor({ goal: createEmptyGoal(parentId), isNew: true }); }
+  function openNewGoal(parentId: string | null) { setCreateHubOpen(false); setGoalEditor({ goal: createEmptyGoal(parentId), isNew: true }); }
   function openEditGoal(goal: PlanGoal) { setGoalEditor({ goal, isNew: false }); }
   function openNewScheduleBlock() {
+    setCreateHubOpen(false);
     const ordered = [...planner.scheduleBlocks].sort((a, b) => a.end.localeCompare(b.end));
     const lastEnd = ordered.at(-1)?.end;
     const start = lastEnd && timeToMinutes(lastEnd) <= 20 * 60 + 45 ? lastEnd : '05:00';
@@ -763,10 +804,11 @@ export function PlannerApp() {
         </div>
       </section>
 
-      <button className="desktop-fab" onClick={() => openNew()}><Plus size={21} /><span>새 할 일</span></button>
-      <BottomNav active={active} onChange={setActive} onAdd={() => openNew()} />
+      <button className="desktop-fab" onClick={() => setCreateHubOpen(true)}><Plus size={21} /><span>새로 만들기</span></button>
+      <BottomNav active={active} onChange={setActive} onAdd={() => setCreateHubOpen(true)} />
 
-      {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} today={planner.today} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
+      {createHubOpen ? <CreateHub onClose={() => setCreateHubOpen(false)} onTask={() => openNew()} onBlock={openNewScheduleBlock} onGoal={() => openNewGoal(null)} /> : null}
+      {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
       {themeMenu ? <ThemeMenu theme={planner.theme} onChange={planner.setTheme} onClose={() => setThemeMenu(false)} /> : null}

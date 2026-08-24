@@ -3,6 +3,7 @@
 import { Check, Clock3, Trash2, X } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { ScheduleBlock, scheduleBlockDuration, TaskColor, timeToMinutes } from '../lib/planner';
+import { TimeChoice } from './time-choice';
 
 type TimeBlockSheetProps = {
   block: ScheduleBlock;
@@ -30,6 +31,7 @@ function durationLabel(minutes: number) {
 export function TimeBlockSheet({ block: initialBlock, isNew, onClose, onSave, onDelete }: TimeBlockSheetProps) {
   const [block, setBlock] = useState(initialBlock);
   const [error, setError] = useState('');
+  const [activeTime, setActiveTime] = useState<'start' | 'end'>('start');
 
   function update<K extends keyof ScheduleBlock>(key: K, value: ScheduleBlock[K]) {
     setBlock((current) => ({ ...current, [key]: value }));
@@ -70,11 +72,12 @@ export function TimeBlockSheet({ block: initialBlock, isNew, onClose, onSave, on
 
           <section className="sheet-section">
             <h3>시간 범위</h3>
-            <div className="time-block-fields">
-              <label><span>시작</span><input type="time" step="900" value={block.start} onChange={(event) => update('start', event.target.value)} /></label>
-              <Clock3 size={18} />
-              <label><span>종료</span><input type="time" step="900" value={block.end} onChange={(event) => update('end', event.target.value)} /></label>
+            <div className="time-range-tabs" role="tablist" aria-label="시간 범위 선택">
+              <button type="button" role="tab" aria-selected={activeTime === 'start'} onClick={() => setActiveTime('start')}><span>시작</span><strong>{block.start}</strong></button>
+              <i aria-hidden="true" />
+              <button type="button" role="tab" aria-selected={activeTime === 'end'} onClick={() => setActiveTime('end')}><span>종료</span><strong>{block.end}</strong></button>
             </div>
+            <TimeChoice value={block[activeTime]} onChange={(value) => update(activeTime, value)} label={activeTime === 'start' ? '시작 시간' : '종료 시간'} />
             <p className="time-block-duration"><Clock3 size={14} />{timeToMinutes(block.end) > timeToMinutes(block.start) ? durationLabel(scheduleBlockDuration(block)) : '시간 범위를 확인해주세요'}</p>
           </section>
 
