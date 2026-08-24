@@ -15,6 +15,20 @@ export function isNativeApp() {
   return Capacitor.isNativePlatform();
 }
 
+export async function installNativeUrlHandler(handler: (url: string) => void | Promise<void>) {
+  if (!isNativeApp()) return () => undefined;
+
+  const listener = await App.addListener('appUrlOpen', ({ url }) => {
+    void handler(url);
+  });
+  const launch = await App.getLaunchUrl();
+  if (launch?.url) await handler(launch.url);
+
+  return () => {
+    void listener.remove();
+  };
+}
+
 export function currentTimestamp() {
   return Date.now();
 }
