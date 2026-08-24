@@ -11,6 +11,11 @@ export default defineConfig(({ mode }) => {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are required for the iOS build.');
   }
 
+  const isPublishableKey = supabaseKey.startsWith('sb_publishable_') || supabaseKey.startsWith('eyJ');
+  if (supabaseKey === supabaseUrl || !isPublishableKey) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY must contain a valid Supabase publishable or anon key, not the project URL.');
+  }
+
   return {
     root: path.resolve(process.cwd(), 'mobile'),
     publicDir: path.resolve(process.cwd(), 'public'),
