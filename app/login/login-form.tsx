@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { createClient } from '../lib/supabase/client';
@@ -85,6 +86,11 @@ export function LoginForm() {
         </form>
 
         <p className="auth-trust"><LockKeyhole size={14} />데이터는 계정별로 분리되며 다른 사용자는 볼 수 없습니다.</p>
+        <nav className="auth-legal" aria-label="정책과 고객지원">
+          <Link href="/privacy">개인정보처리방침</Link>
+          <Link href="/terms">이용약관</Link>
+          <Link href="/support">고객지원</Link>
+        </nav>
       </section>
     </main>
   );

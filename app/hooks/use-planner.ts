@@ -603,6 +603,29 @@ export function usePlanner(userId: string) {
     }
   }, [commit, userId]);
 
+  const clearLocalPlannerData = useCallback(() => {
+    try {
+      const scopedKeys = [STORAGE_KEY, BACKUP_STORAGE_KEY, RECOVERY_STORAGE_KEY]
+        .map((key) => scopedKey(key, userId));
+      scopedKeys.forEach((key) => window.localStorage.removeItem(key));
+
+      if (window.localStorage.getItem(MIGRATION_OWNER_KEY) === userId) {
+        [
+          STORAGE_KEY,
+          BACKUP_STORAGE_KEY,
+          LEGACY_V5_STORAGE_KEY,
+          LEGACY_V5_BACKUP_STORAGE_KEY,
+          LEGACY_V4_STORAGE_KEY,
+          LEGACY_V3_STORAGE_KEY,
+          LEGACY_V2_STORAGE_KEY,
+        ].forEach((key) => window.localStorage.removeItem(key));
+        window.localStorage.removeItem(MIGRATION_OWNER_KEY);
+      }
+    } catch {
+      // The server has already deleted the account; Clear-Site-Data remains the fallback.
+    }
+  }, [userId]);
+
   const resetPlanner = useCallback(() => {
     try {
       window.localStorage.setItem(scopedKey(RECOVERY_STORAGE_KEY, userId), JSON.stringify(stateRef.current));
@@ -646,6 +669,7 @@ export function usePlanner(userId: string) {
     exportBackup,
     importBackup,
     restoreRecovery,
+    clearLocalPlannerData,
     resetPlanner,
   };
 }

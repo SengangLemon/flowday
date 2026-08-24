@@ -847,6 +847,27 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
     window.location.assign(new URL('/login', window.location.origin));
   }
 
+  async function deleteAccount() {
+    try {
+      const response = await fetch('/api/account', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) {
+        return { ok: false, message: result.error || '계정을 삭제하지 못했습니다.' };
+      }
+
+      planner.clearLocalPlannerData();
+      await createClient().auth.signOut({ scope: 'local' });
+      window.location.replace(new URL('/login', window.location.origin));
+      return { ok: true, message: '계정과 모든 계획 데이터를 삭제했습니다.' };
+    } catch {
+      return { ok: false, message: '네트워크 연결을 확인한 뒤 다시 시도해주세요.' };
+    }
+  }
+
   const syncLabel = {
     loading: '클라우드 연결 중',
     saving: '변경사항 저장 중',
@@ -887,7 +908,7 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
-      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onDeleteAccount={deleteAccount} onClose={() => setSettingsOpen(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
       {introView ? <MenuIntro key={introView} view={introView} onComplete={completeMenuIntro} /> : null}
     </main>

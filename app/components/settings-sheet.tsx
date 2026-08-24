@@ -8,6 +8,7 @@ import {
   Compass,
   DatabaseBackup,
   Download,
+  FileText,
   FileUp,
   LoaderCircle,
   LogOut,
@@ -17,6 +18,7 @@ import {
   ShieldCheck,
   Sun,
   Trash2,
+  UserX,
   UserRound,
   X,
 } from 'lucide-react';
@@ -41,6 +43,7 @@ type SettingsSheetProps = {
   onReset: () => void;
   onShowMenuIntro: () => void;
   onSignOut: () => Promise<void>;
+  onDeleteAccount: () => Promise<OperationResult>;
   onClose: () => void;
 };
 
@@ -50,7 +53,7 @@ const THEMES: { id: Theme; label: string; description: string; icon: typeof Sun 
   { id: 'dark', label: '어둡게', description: '야간 집중', icon: Moon },
 ];
 
-export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, onThemeChange, onExport, onImport, onRestore, onReset, onShowMenuIntro, onSignOut, onClose }: SettingsSheetProps) {
+export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, onThemeChange, onExport, onImport, onRestore, onReset, onShowMenuIntro, onSignOut, onDeleteAccount, onClose }: SettingsSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<{ name: string; raw: string } | null>(null);
@@ -58,6 +61,9 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
   const [resetConfirm, setResetConfirm] = useState(false);
   const [canRestore, setCanRestore] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [deleteAccountConfirm, setDeleteAccountConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState('');
   const savedTime = lastSavedAt ? new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' }).format(lastSavedAt) : null;
   const savedLabel = {
     loading: '클라우드 연결 중',
@@ -133,6 +139,17 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
     setMessage({ tone: result.ok ? 'success' : 'error', text: result.message });
   }
 
+  async function handleDeleteAccount() {
+    if (deletingAccount) return;
+    setDeletingAccount(true);
+    setDeleteAccountError('');
+    const result = await onDeleteAccount();
+    if (!result.ok) {
+      setDeleteAccountError(result.message);
+      setDeletingAccount(false);
+    }
+  }
+
   return (
     <div className="settings-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={dialogRef} className="settings-sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title" onKeyDown={keepFocusInside}>
@@ -151,6 +168,11 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
             <header><div><strong>내 계정</strong><p>이 계정으로 계획과 완료 기록을 기기 간에 이어갑니다.</p></div><UserRound size={19} /></header>
             <div className="account-row"><span><UserRound size={17} /></span><div><small>로그인 이메일</small><strong>{userEmail || 'Flowday 사용자'}</strong></div><button type="button" disabled={signingOut} onClick={async () => { setSigningOut(true); await onSignOut(); }}>{signingOut ? <LoaderCircle className="spin" size={16} /> : <LogOut size={16} />}로그아웃</button></div>
             <button className="settings-tour-button" type="button" onClick={onShowMenuIntro}><span><Compass size={17} /></span><div><strong>현재 메뉴 안내 다시 보기</strong><small>지금 보고 있는 화면의 핵심 기능 확인</small></div><ChevronRight size={17} /></button>
+            <nav className="settings-legal-links" aria-label="정책과 고객지원">
+              <a href="/privacy"><ShieldCheck size={15} />개인정보처리방침</a>
+              <a href="/terms"><FileText size={15} />이용약관</a>
+              <a href="/support">고객지원</a>
+            </nav>
           </section>
 
           <section className="settings-section">
@@ -184,6 +206,20 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
           <section className="settings-section danger-zone">
             <header><div><strong>데이터 초기화</strong><p>모든 할 일, 계획, 시간 블록과 완료 기록을 비웁니다.</p></div></header>
             {!resetConfirm ? <button type="button" onClick={() => setResetConfirm(true)}><Trash2 size={16} />모든 데이터 삭제</button> : <div className="settings-confirm" role="alert"><div><strong>정말 처음부터 시작할까요?</strong><p>삭제 직후에는 ‘직전 데이터 복구’로 한 번 되돌릴 수 있습니다.</p></div><button type="button" onClick={() => setResetConfirm(false)}>취소</button><button className="danger" type="button" onClick={() => { onReset(); setResetConfirm(false); setCanRestore(true); setMessage({ tone: 'success', text: '모든 데이터를 비웠습니다.' }); }}>전체 삭제</button></div>}
+          </section>
+
+          <section className="settings-section danger-zone account-delete-zone">
+            <header><div><strong>계정 삭제</strong><p>로그인 계정과 클라우드에 연결된 모든 계획 및 완료 기록을 영구 삭제합니다.</p></div><UserX size={19} /></header>
+            {!deleteAccountConfirm ? (
+              <button type="button" onClick={() => { setDeleteAccountConfirm(true); setDeleteAccountError(''); }}><UserX size={16} />계정 삭제 요청</button>
+            ) : (
+              <div className="settings-confirm" role="alert">
+                <div><strong>계정까지 완전히 삭제할까요?</strong><p>이 작업은 취소하거나 백업에서 되돌릴 수 없습니다.</p></div>
+                <button type="button" disabled={deletingAccount} onClick={() => setDeleteAccountConfirm(false)}>취소</button>
+                <button className="danger" type="button" disabled={deletingAccount} onClick={handleDeleteAccount}>{deletingAccount ? <LoaderCircle className="spin" size={14} /> : null}영구 삭제</button>
+              </div>
+            )}
+            {deleteAccountError ? <div className="settings-message error" role="alert">{deleteAccountError}</div> : null}
           </section>
         </div>
       </section>
