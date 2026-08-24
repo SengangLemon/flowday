@@ -49,6 +49,16 @@ jobs:
       - name: Sync Capacitor iOS project
         run: npx cap sync ios
 
+      - name: Normalize Apple team ID
+        if: inputs.upload_testflight
+        run: |
+          CLEAN_TEAM_ID="$(printf '%s' "$APPLE_TEAM_ID" | tr -d '[:space:]')"
+          if [[ ! "$CLEAN_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error title=Invalid Apple Team ID::APPLE_TEAM_ID must contain exactly 10 letters or numbers."
+            exit 1
+          fi
+          echo "APPLE_TEAM_ID=$CLEAN_TEAM_ID" >> "$GITHUB_ENV"
+
       - name: Import App Store certificate
         if: inputs.upload_testflight
         uses: Apple-Actions/import-codesign-certs@v7
