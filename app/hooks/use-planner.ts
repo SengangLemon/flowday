@@ -28,7 +28,10 @@ const subscribeToHydration = () => () => undefined;
 
 export type PlannerSyncStatus = 'loading' | 'saving' | 'synced' | 'offline' | 'error';
 
-type StoredPlannerState = Omit<PlannerState, 'version'> & { version: 5 | 6 };
+type StoredPlannerState = Omit<PlannerState, 'version' | 'onboardingCompleted'> & {
+  version: 5 | 6;
+  onboardingCompleted?: boolean;
+};
 
 type PlannerBackup = {
   format: 'flowday-backup';
@@ -38,7 +41,7 @@ type PlannerBackup = {
 };
 
 function defaultState(): PlannerState {
-  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light' };
+  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light', onboardingCompleted: false };
 }
 
 function userCreatedTasks(tasks: PlannerTask[]) {
@@ -93,6 +96,7 @@ function upgradeState(state: StoredPlannerState): PlannerState {
     goals,
     scheduleBlocks: state.scheduleBlocks,
     theme: normalizeTheme(state.theme),
+    onboardingCompleted: Boolean(state.onboardingCompleted),
   };
 }
 
@@ -546,6 +550,10 @@ export function usePlanner(userId: string) {
     commit((current) => ({ ...current, theme: nextTheme }));
   }, [commit]);
 
+  const setOnboardingCompleted = useCallback((completed: boolean) => {
+    commit((current) => ({ ...current, onboardingCompleted: completed }));
+  }, [commit]);
+
   const exportBackup = useCallback(() => {
     const backup: PlannerBackup = {
       format: 'flowday-backup',
@@ -610,6 +618,7 @@ export function usePlanner(userId: string) {
     goals,
     scheduleBlocks,
     theme,
+    onboardingCompleted: state.onboardingCompleted,
     lastSavedAt,
     saveError: localSaveError || syncStatus === 'error',
     syncStatus,
@@ -625,6 +634,7 @@ export function usePlanner(userId: string) {
     upsertScheduleBlock,
     deleteScheduleBlock,
     setTheme,
+    setOnboardingCompleted,
     exportBackup,
     importBackup,
     restoreRecovery,

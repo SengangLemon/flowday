@@ -3,13 +3,11 @@
 import Image from 'next/image';
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle, LockKeyhole, Mail } from 'lucide-react';
 import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { createClient } from '../lib/supabase/client';
 
 type Mode = 'login' | 'signup';
 
 export function LoginForm() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,8 +29,7 @@ export function LoginForm() {
         setLoading(false);
         return;
       }
-      router.replace('/');
-      router.refresh();
+      window.location.assign(new URL('/', window.location.origin));
       return;
     }
 
@@ -48,8 +45,7 @@ export function LoginForm() {
     }
 
     if (data.session) {
-      router.replace('/');
-      router.refresh();
+      window.location.assign(new URL('/', window.location.origin));
       return;
     }
 

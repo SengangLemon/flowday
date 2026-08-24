@@ -2,8 +2,10 @@
 
 import {
   Check,
+  ChevronRight,
   Cloud,
   CloudOff,
+  Compass,
   DatabaseBackup,
   Download,
   FileUp,
@@ -37,6 +39,7 @@ type SettingsSheetProps = {
   onImport: (raw: string) => OperationResult;
   onRestore: () => OperationResult;
   onReset: () => void;
+  onStartTour: () => void;
   onSignOut: () => Promise<void>;
   onClose: () => void;
 };
@@ -47,7 +50,7 @@ const THEMES: { id: Theme; label: string; description: string; icon: typeof Sun 
   { id: 'dark', label: '어둡게', description: '야간 집중', icon: Moon },
 ];
 
-export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, onThemeChange, onExport, onImport, onRestore, onReset, onSignOut, onClose }: SettingsSheetProps) {
+export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError, syncStatus, onThemeChange, onExport, onImport, onRestore, onReset, onStartTour, onSignOut, onClose }: SettingsSheetProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<{ name: string; raw: string } | null>(null);
@@ -147,6 +150,7 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
           <section className="settings-section account-section">
             <header><div><strong>내 계정</strong><p>이 계정으로 계획과 완료 기록을 기기 간에 이어갑니다.</p></div><UserRound size={19} /></header>
             <div className="account-row"><span><UserRound size={17} /></span><div><small>로그인 이메일</small><strong>{userEmail || 'Flowday 사용자'}</strong></div><button type="button" disabled={signingOut} onClick={async () => { setSigningOut(true); await onSignOut(); }}>{signingOut ? <LoaderCircle className="spin" size={16} /> : <LogOut size={16} />}로그아웃</button></div>
+            <button className="settings-tour-button" type="button" onClick={onStartTour}><span><Compass size={17} /></span><div><strong>메뉴 안내 다시 보기</strong><small>Flowday의 다섯 가지 핵심 화면 둘러보기</small></div><ChevronRight size={17} /></button>
           </section>
 
           <section className="settings-section">

@@ -1,7 +1,6 @@
 'use client';
 
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   BarChart3,
@@ -63,6 +62,7 @@ import {
   weekDates,
 } from '../lib/planner';
 import { GoalSheet } from './goal-sheet';
+import { OnboardingTour } from './onboarding-tour';
 import { SettingsSheet } from './settings-sheet';
 import { TaskSheet } from './task-sheet';
 import { TimeBlockSheet } from './time-block-sheet';
@@ -738,7 +738,6 @@ function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
 type PlannerAppProps = { userId: string; userEmail: string };
 
 export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
-  const router = useRouter();
   const planner = usePlanner(userId);
   const [active, setActive] = useState<PlannerView>('habit');
   const [selectedDate, setSelectedDate] = useState('');
@@ -751,11 +750,14 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [focusGoalId, setFocusGoalId] = useState('');
+  const [tourMode, setTourMode] = useState<'auto' | 'open' | 'closed'>('auto');
   const activeDate = selectedDate || planner.today;
-  const overlayOpen = settingsOpen || createHubOpen || searchOpen || Boolean(editor || goalEditor || timeBlockEditor);
+  const tourOpen = planner.ready && (tourMode === 'open' || (tourMode === 'auto' && !planner.onboardingCompleted));
+  const overlayOpen = tourOpen || settingsOpen || createHubOpen || searchOpen || Boolean(editor || goalEditor || timeBlockEditor);
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
+      if (tourOpen) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault();
         setSearchOpen(true);
@@ -772,7 +774,7 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
     }
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
-  }, []);
+  }, [tourOpen]);
 
   useEffect(() => {
     if (!overlayOpen) return;
@@ -791,6 +793,17 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
   }, [overlayOpen]);
 
   function closeSearch() { setSearchOpen(false); setSearchQuery(''); }
+
+  function completeTour() {
+    setTourMode('closed');
+    planner.setOnboardingCompleted(true);
+  }
+
+  function startTour() {
+    setSettingsOpen(false);
+    setActive('habit');
+    setTourMode('open');
+  }
 
   function openNew(date = activeDate, start: string | null = null, goal?: PlanGoal) {
     setCreateHubOpen(false);
@@ -827,8 +840,7 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
   async function signOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.replace('/login');
-    router.refresh();
+    window.location.assign(new URL('/login', window.location.origin));
   }
 
   const syncLabel = {
@@ -871,8 +883,9 @@ export function PlannerApp({ userId, userEmail }: PlannerAppProps) {
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
-      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onSignOut={signOut} onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onStartTour={startTour} onSignOut={signOut} onClose={() => setSettingsOpen(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
+      {tourOpen ? <OnboardingTour onViewChange={setActive} onComplete={completeTour} /> : null}
     </main>
   );
 }
