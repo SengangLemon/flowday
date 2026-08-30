@@ -36,7 +36,9 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
   const isRoot = goal.parentId === null;
   const horizon = GOAL_HORIZONS.find((item) => item.id === goalHorizon(goal.period, goal.daily)) ?? GOAL_HORIZONS[2];
   const progressLabel = formatGoalNumericProgress(goal);
-  const preparationSchedule = applicationPreparationSchedule(goal.deadline);
+  const preparationSchedule = goal.deadlinePlan === 'application'
+    ? applicationPreparationSchedule(goal.deadline)
+    : [];
   const parentOptions = useMemo(() => {
     const descendants = new Set<string>();
     let changed = true;
@@ -119,12 +121,16 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
               <p className="goal-horizon-hint">학점, 점수, 횟수처럼 숫자로 확인할 목표에 사용하세요.</p>
             </div>
             <div className="choice-block goal-deadline-editor">
-              <header><span><CalendarClock size={16} />지원 마감일</span><strong>{goal.deadline ? formatDateLabel(goal.deadline, { year: 'numeric', month: 'short', day: 'numeric' }) : '날짜 선택'}</strong></header>
-              <label className="goal-deadline-field"><span>마감일</span><input type="date" value={goal.deadline ?? ''} onChange={(event) => update('deadline', event.target.value || null)} aria-label="지원 마감일" /></label>
+              <header><span><CalendarClock size={16} />목표 완료일</span><strong>{goal.deadline ? formatDateLabel(goal.deadline, { year: 'numeric', month: 'short', day: 'numeric' }) : '날짜 선택'}</strong></header>
+              <label className="goal-deadline-field"><span>완료일</span><input type="date" value={goal.deadline ?? ''} onChange={(event) => update('deadline', event.target.value || null)} aria-label="목표 완료일" /></label>
+              <div className="deadline-plan-options" role="group" aria-label="마감 역산 방식">
+                <button type="button" aria-pressed={goal.deadlinePlan === 'none'} onClick={() => update('deadlinePlan', 'none')}><Target size={15} /><span><strong>날짜 목표</strong><small>캘린더에 완료일만 표시</small></span></button>
+                <button type="button" aria-pressed={goal.deadlinePlan === 'application'} onClick={() => update('deadlinePlan', 'application')}><CalendarClock size={15} /><span><strong>지원 준비 역산</strong><small>추천서·SOP·성적표 자동 생성</small></span></button>
+              </div>
               {preparationSchedule.length ? <div className="deadline-preview" aria-label="자동 준비 일정 미리보기">
                 {preparationSchedule.map((milestone) => <div key={milestone.key}><i /><span><strong>{milestone.title}</strong><small>{formatDateLabel(milestone.date, { month: 'short', day: 'numeric', weekday: 'short' })} · {milestone.offsetLabel}</small></span></div>)}
                 <p>저장하면 인박스와 캘린더에 준비 할 일 3개가 자동으로 만들어집니다.</p>
-              </div> : <p className="goal-horizon-hint">마감일을 선택하면 추천서·SOP·성적표 준비일을 자동으로 역산합니다.</p>}
+              </div> : <p className="goal-horizon-hint">{goal.deadlinePlan === 'application' ? '완료일을 선택하면 추천서·SOP·성적표 준비일을 자동으로 역산합니다.' : '완료일에는 이 계획이 색상 목표 블록으로 캘린더에 표시됩니다.'}</p>}
             </div>
           </section>
 

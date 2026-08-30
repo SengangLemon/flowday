@@ -49,9 +49,9 @@ const MENU_INTROS: Record<PlannerView, MenuIntroContent> = {
   },
   calendar: {
     menu: '캘린더',
-    title: '계획을 색으로 한눈에 봐요',
-    caption: '주간·월간·연간 흐름을 살펴봅니다.',
-    visualLabel: '여러 날짜에 색상 일정 블록이 배치된 월간 달력',
+    title: '일정과 목표일을 함께 봐요',
+    caption: '언제까지 할 목표인지 날짜에 바로 놓습니다.',
+    visualLabel: '색상 일정 블록과 목표 완료일이 함께 표시된 월간 달력',
     icon: CalendarDays,
   },
   focus: {
@@ -107,7 +107,7 @@ function MenuIntroVisual({ view, label }: { view: PlannerView; label: string }) 
         <div className="intro-calendar-card">
           <header><span /><strong>AUG</strong><CalendarDays size={15} /></header>
           <div className="intro-calendar-grid">{CALENDAR_CELLS.map((cell) => <i key={cell} />)}</div>
-          <b className="calendar-event event-one" /><b className="calendar-event event-two" /><b className="calendar-event event-three" />
+          <b className="calendar-event event-one" /><b className="calendar-event event-two goal-event"><Target size={7} /></b><b className="calendar-event event-three" />
         </div>
       </div>
     );

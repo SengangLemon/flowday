@@ -7,6 +7,7 @@ export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type GoalPeriod = string;
 export type GoalHorizon = 'long' | 'mid' | 'short' | 'daily';
 export type ApplicationMilestoneKey = 'recommendation' | 'sop' | 'transcript';
+export type DeadlinePlan = 'none' | 'application';
 
 export type ScheduleBlock = {
   id: string;
@@ -54,6 +55,7 @@ export type PlanGoal = {
   progressTarget: number | null;
   progressUnit: string;
   deadline: string | null;
+  deadlinePlan: DeadlinePlan;
   createdAt: number;
   updatedAt: number;
 };
@@ -315,7 +317,14 @@ export function normalizeGoal(goal: PlanGoal): PlanGoal {
     progressTarget: normalizeProgressNumber(goal.progressTarget),
     progressUnit: typeof goal.progressUnit === 'string' ? goal.progressUnit.trim().slice(0, 20) : '',
     deadline: typeof goal.deadline === 'string' && isDateKey(goal.deadline) ? goal.deadline : null,
+    deadlinePlan: goal.deadlinePlan === 'application' || goal.deadlinePlan === 'none'
+      ? goal.deadlinePlan
+      : goal.deadline ? 'application' : 'none',
   };
+}
+
+export function goalsForDate(goals: PlanGoal[], date: string) {
+  return goals.filter((goal) => goal.deadline === date).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export function goalNumericProgress(goal: Pick<PlanGoal, 'progressCurrent' | 'progressTarget'>) {
@@ -339,6 +348,7 @@ export function syncApplicationPreparationTasks(
   updatedAt: number,
   createMissing: boolean,
 ) {
+  if (goal.deadlinePlan !== 'application') return tasks;
   const milestones = applicationPreparationSchedule(goal.deadline);
   if (!milestones.length) return tasks;
 
@@ -404,6 +414,7 @@ export function createEmptyGoal(parentId: string | null = null, parentPeriod?: s
     progressTarget: null,
     progressUnit: '',
     deadline: null,
+    deadlinePlan: 'none',
     createdAt: now,
     updatedAt: now,
   };

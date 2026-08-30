@@ -52,6 +52,7 @@ import {
   formatGoalNumericProgress,
   goalHorizon,
   goalNumericProgress,
+  goalsForDate,
   GOAL_HORIZONS,
   minutesToTime,
   monthGridDates,
@@ -79,7 +80,7 @@ import { TaskSheet } from './task-sheet';
 import { TimeBlockSheet } from './time-block-sheet';
 
 type EditorState = { task: PlannerTask; isNew: boolean } | null;
-type GoalEditorState = { goal: PlanGoal; isNew: boolean } | null;
+type GoalEditorState = { goal: PlanGoal; isNew: boolean; returnView?: PlannerView } | null;
 type TimeBlockEditorState = { block: ScheduleBlock; isNew: boolean } | null;
 
 const NAV_ITEMS: { id: PlannerView; label: string; icon: typeof Inbox }[] = [
@@ -598,33 +599,72 @@ function PlanView({ today, goals, focusGoalId, onNewGoalTask, onNewGoal, onEditG
 }
 
 type CalendarMode = 'week' | 'month' | 'year';
-type CalendarViewProps = { selectedDate: string; today: string; tasks: PlannerTask[]; onDateChange: (date: string) => void; onNew: (date: string, start?: string | null) => void; onEdit: (task: PlannerTask) => void; onToggle: (id: string, occurrenceDate?: string) => void; onMove: (id: string, date: string, start?: string | null) => void };
+type CalendarViewProps = {
+  selectedDate: string;
+  today: string;
+  tasks: PlannerTask[];
+  goals: PlanGoal[];
+  onDateChange: (date: string) => void;
+  onNew: (date: string, start?: string | null) => void;
+  onNewGoal: (date: string) => void;
+  onEdit: (task: PlannerTask) => void;
+  onEditGoal: (goal: PlanGoal) => void;
+  onToggle: (id: string, occurrenceDate?: string) => void;
+  onMove: (id: string, date: string, start?: string | null) => void;
+  onMoveGoal: (id: string, date: string) => void;
+};
 type CalendarBodyProps = CalendarViewProps & { onOpenMonth?: (date: string) => void; onDragStartTask?: (taskId: string) => void };
 
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
-function MonthCalendar({ selectedDate, today, tasks, onDateChange, onEdit, onMove, onDragStartTask }: CalendarBodyProps) {
+function CalendarGoalCard({ goal, onEdit, layout = 'week' }: { goal: PlanGoal; onEdit: (goal: PlanGoal) => void; layout?: 'week' | 'list' }) {
+  return (
+    <button
+      className={`calendar-goal-card ${goal.color} ${layout}`}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('application/x-flowday-goal', goal.id);
+      }}
+      onClick={() => onEdit(goal)}
+    >
+      <Target size={15} />
+      <span><small>목표 완료일</small><strong>{goal.title}</strong></span>
+    </button>
+  );
+}
+
+function MonthCalendar({ selectedDate, today, tasks, goals, onDateChange, onEdit, onEditGoal, onMove, onMoveGoal, onDragStartTask }: CalendarBodyProps) {
   const dates = monthGridDates(selectedDate);
   const month = selectedDate.slice(0, 7);
   return <div className="month-calendar"><div className="month-weekdays">{WEEKDAY_LABELS.map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{dates.map((date) => {
     const dayTasks = tasksForDate(tasks, date).filter((task) => task.start);
-    return <article className={`${date.slice(0, 7) === month ? '' : 'outside'} ${date === today ? 'today' : ''} ${date === selectedDate ? 'selected' : ''}`} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const taskId = event.dataTransfer.getData('text/plain'); if (taskId) onMove(taskId, date); }}><button className="month-day-number" onClick={() => onDateChange(date)} aria-label={`${formatDateLabel(date)} 선택`}>{Number(date.slice(-2))}</button><div>{dayTasks.slice(0, 3).map((task) => <button className={`month-task-dot ${task.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.id); onDragStartTask?.(task.id); }} onClick={() => onEdit(task)} key={`${task.id}-${date}`}><i />{task.title}</button>)}{dayTasks.length > 3 ? <span>+{dayTasks.length - 3}</span> : null}</div></article>;
+    const dayGoals = goalsForDate(goals, date);
+    const visibleGoals = dayGoals.slice(0, 2);
+    const visibleTasks = dayTasks.slice(0, Math.max(0, 3 - visibleGoals.length));
+    const hiddenCount = dayGoals.length + dayTasks.length - visibleGoals.length - visibleTasks.length;
+    return <article className={`${date.slice(0, 7) === month ? '' : 'outside'} ${date === today ? 'today' : ''} ${date === selectedDate ? 'selected' : ''}`} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain'); if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); }}><button className="month-day-number" onClick={() => onDateChange(date)} aria-label={`${formatDateLabel(date)} 선택`}>{Number(date.slice(-2))}</button><div>{visibleGoals.map((goal) => <button className={`month-goal-dot ${goal.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-flowday-goal', goal.id); }} onClick={() => onEditGoal(goal)} key={`${goal.id}-${date}`}><Target size={8} />{goal.title}</button>)}{visibleTasks.map((task) => <button className={`month-task-dot ${task.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.id); onDragStartTask?.(task.id); }} onClick={() => onEdit(task)} key={`${task.id}-${date}`}><i />{task.title}</button>)}{hiddenCount > 0 ? <span>+{hiddenCount}</span> : null}</div></article>;
   })}</div></div>;
 }
 
-function YearCalendar({ selectedDate, today, tasks, onDateChange, onOpenMonth, onMove, onDragStartTask }: CalendarBodyProps) {
+function YearCalendar({ selectedDate, today, tasks, goals, onDateChange, onOpenMonth, onMove, onMoveGoal, onDragStartTask }: CalendarBodyProps) {
   const year = Number(selectedDate.slice(0, 4));
   return <div className="year-calendar">{Array.from({ length: 12 }, (_, monthIndex) => {
     const monthDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
     const dates = monthGridDates(monthDate);
     return <section className="year-month" key={monthDate}><button className="year-month-title" onClick={() => { onDateChange(monthDate); onOpenMonth?.(monthDate); }}>{monthIndex + 1}월 <ChevronRight size={14} /></button><span className="year-weekdays">{WEEKDAY_LABELS.map((day) => <i key={day}>{day}</i>)}</span><span className="year-days">{dates.map((date) => {
       const dayTasks = tasksForDate(tasks, date).filter((task) => task.start);
-      return <button className={`year-day ${date.slice(0, 7) === monthDate.slice(0, 7) ? '' : 'outside'} ${date === today ? 'today' : ''} ${dayTasks.length ? 'has-task' : ''}`} key={date} onClick={() => { onDateChange(date); onOpenMonth?.(date); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const taskId = event.dataTransfer.getData('text/plain'); if (taskId) onMove(taskId, date); }} aria-label={`${formatDateLabel(date)} · ${dayTasks.length}개 블록`}><span>{Number(date.slice(-2))}</span><span className="year-task-colors">{dayTasks.slice(0, 3).map((task) => <i className={task.color} key={`${task.id}-${date}`} title={task.title} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.id); onDragStartTask?.(task.id); }} />)}</span></button>;
+      const dayGoals = goalsForDate(goals, date);
+      const markers = [
+        ...dayGoals.map((goal) => ({ id: goal.id, title: goal.title, color: goal.color, type: 'goal' as const })),
+        ...dayTasks.map((task) => ({ id: task.id, title: task.title, color: task.color, type: 'task' as const })),
+      ];
+      return <button className={`year-day ${date.slice(0, 7) === monthDate.slice(0, 7) ? '' : 'outside'} ${date === today ? 'today' : ''} ${markers.length ? 'has-task' : ''}`} key={date} onClick={() => { onDateChange(date); onOpenMonth?.(date); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain'); if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); }} aria-label={`${formatDateLabel(date)} · ${dayGoals.length}개 목표, ${dayTasks.length}개 블록`}><span>{Number(date.slice(-2))}</span><span className="year-task-colors">{markers.slice(0, 3).map((marker) => <i className={`${marker.color} ${marker.type === 'goal' ? 'goal-marker' : ''}`} key={`${marker.type}-${marker.id}-${date}`} title={marker.title} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.effectAllowed = 'move'; if (marker.type === 'goal') event.dataTransfer.setData('application/x-flowday-goal', marker.id); else { event.dataTransfer.setData('text/plain', marker.id); onDragStartTask?.(marker.id); } }} />)}</span></button>;
     })}</span></section>;
   })}</div>;
 }
 
-function CalendarView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, onToggle, onMove }: CalendarViewProps) {
+export function CalendarView({ selectedDate, today, tasks, goals, onDateChange, onNew, onNewGoal, onEdit, onEditGoal, onToggle, onMove, onMoveGoal }: CalendarViewProps) {
   const [mode, setMode] = useState<CalendarMode>('week');
   const [dragId, setDragId] = useState<string | null>(null);
   const dates = weekDates(selectedDate);
@@ -638,10 +678,10 @@ function CalendarView({ selectedDate, today, tasks, onDateChange, onNew, onEdit,
   }
   return (
     <div className="content-view calendar-view-v2">
-      <header className="view-intro calendar-intro"><div><span className="overline">일정</span><h1>{title}</h1><p>색상 실행 블록을 주·월·연 단위로 확인하고, 끌어서 날짜를 옮기거나 눌러 수정합니다.</p></div><div className="calendar-header-tools"><div className="segmented-control"><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>주간</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>월간</button><button className={mode === 'year' ? 'active' : ''} onClick={() => setMode('year')}>연간</button></div><div className="calendar-nav"><button onClick={() => move(-1)} aria-label="이전 기간"><ChevronLeft size={18} /></button><button onClick={() => onDateChange(today)}>오늘</button><button onClick={() => move(1)} aria-label="다음 기간"><ChevronRight size={18} /></button><button className="calendar-add" onClick={() => onNew(selectedDate, '09:00')} aria-label="선택한 날짜에 블록 추가"><Plus size={17} /></button></div></div></header>
-      {mode === 'week' ? <><div className="calendar-week-desktop">{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); return <section className={date === today ? 'today' : ''} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const taskId = event.dataTransfer.getData('text/plain') || dragId; if (taskId) onMove(taskId, date); setDragId(null); }}><header><span>{formatDateLabel(date, { weekday: 'short' })}</span><strong>{Number(date.slice(-2))}</strong></header><div>{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="calendar" />)}<button className="calendar-day-add" onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={15} /></button></div></section>; })}</div><div className="calendar-week-mobile"><WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); return <section key={date} className={date === selectedDate ? 'selected' : ''} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const taskId = event.dataTransfer.getData('text/plain') || dragId; if (taskId) onMove(taskId, date); setDragId(null); }}><header><div><strong>{formatDateLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })}</strong><span>{dayTasks.length}개 블록</span></div><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={17} /></button></header>{dayTasks.length ? dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="list" />) : <p>비어 있는 날입니다.</p>}</section>; })}</div></> : null}
-      {mode === 'month' ? <MonthCalendar selectedDate={selectedDate} today={today} tasks={tasks} onDateChange={onDateChange} onNew={onNew} onEdit={onEdit} onToggle={onToggle} onMove={onMove} onDragStartTask={setDragId} /> : null}
-      {mode === 'year' ? <YearCalendar selectedDate={selectedDate} today={today} tasks={tasks} onDateChange={onDateChange} onNew={onNew} onEdit={onEdit} onToggle={onToggle} onMove={onMove} onDragStartTask={setDragId} onOpenMonth={() => setMode('month')} /> : null}
+      <header className="view-intro calendar-intro"><div><span className="overline">일정과 목표</span><h1>{title}</h1><p>실행 블록과 날짜 목표를 함께 확인하고, 눌러 수정하거나 끌어서 날짜를 옮깁니다.</p></div><div className="calendar-header-tools"><div className="segmented-control"><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>주간</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>월간</button><button className={mode === 'year' ? 'active' : ''} onClick={() => setMode('year')}>연간</button></div><div className="calendar-nav"><button onClick={() => move(-1)} aria-label="이전 기간"><ChevronLeft size={18} /></button><button onClick={() => onDateChange(today)}>오늘</button><button onClick={() => move(1)} aria-label="다음 기간"><ChevronRight size={18} /></button><button className="calendar-goal-add" onClick={() => onNewGoal(selectedDate)} aria-label="선택한 날짜에 목표 추가"><Target size={15} /><span>목표</span></button><button className="calendar-add" onClick={() => onNew(selectedDate, '09:00')} aria-label="선택한 날짜에 블록 추가"><Plus size={17} /></button></div></div></header>
+      {mode === 'week' ? <><div className="calendar-week-desktop">{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); const dayGoals = goalsForDate(goals, date); return <section className={date === today ? 'today' : ''} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain') || dragId; if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); setDragId(null); }}><header><span>{formatDateLabel(date, { weekday: 'short' })}</span><strong>{Number(date.slice(-2))}</strong></header><div>{dayGoals.map((goal) => <CalendarGoalCard key={goal.id} goal={goal} onEdit={onEditGoal} />)}{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="calendar" />)}<div className="calendar-day-adds"><button onClick={() => onNewGoal(date)} aria-label={`${date} 목표 추가`}><Target size={14} /></button><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={15} /></button></div></div></section>; })}</div><div className="calendar-week-mobile"><WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); const dayGoals = goalsForDate(goals, date); return <section key={date} className={date === selectedDate ? 'selected' : ''}><header><div><strong>{formatDateLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })}</strong><span>{dayGoals.length}개 목표 · {dayTasks.length}개 블록</span></div><div className="calendar-mobile-day-actions"><button onClick={() => onNewGoal(date)} aria-label={`${date} 목표 추가`}><Target size={16} /></button><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={17} /></button></div></header>{dayGoals.length || dayTasks.length ? <>{dayGoals.map((goal) => <CalendarGoalCard key={goal.id} goal={goal} onEdit={onEditGoal} layout="list" />)}{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="list" />)}</> : <p>비어 있는 날입니다.</p>}</section>; })}</div></> : null}
+      {mode === 'month' ? <MonthCalendar selectedDate={selectedDate} today={today} tasks={tasks} goals={goals} onDateChange={onDateChange} onNew={onNew} onNewGoal={onNewGoal} onEdit={onEdit} onEditGoal={onEditGoal} onToggle={onToggle} onMove={onMove} onMoveGoal={onMoveGoal} onDragStartTask={setDragId} /> : null}
+      {mode === 'year' ? <YearCalendar selectedDate={selectedDate} today={today} tasks={tasks} goals={goals} onDateChange={onDateChange} onNew={onNew} onNewGoal={onNewGoal} onEdit={onEdit} onEditGoal={onEditGoal} onToggle={onToggle} onMove={onMove} onMoveGoal={onMoveGoal} onDragStartTask={setDragId} onOpenMonth={() => setMode('month')} /> : null}
     </div>
   );
 }
@@ -896,12 +936,17 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
   }
   function openEdit(task: PlannerTask) { setEditor({ task, isNew: false }); }
   function scheduleFromInbox(task: PlannerTask, date: string) { setEditor({ task: { ...task, date, start: '09:00' }, isNew: false }); }
-  function openNewGoal(parentId: string | null) {
+  function openNewGoal(parentId: string | null, deadline?: string, returnView: PlannerView = 'plan') {
     setCreateHubOpen(false);
     const parent = parentId ? planner.goals.find((goal) => goal.id === parentId) : undefined;
-    setGoalEditor({ goal: createEmptyGoal(parentId, parent?.period), isNew: true });
+    const goal = createEmptyGoal(parentId, parent?.period);
+    setGoalEditor({ goal: deadline ? { ...goal, deadline } : goal, isNew: true, returnView });
   }
-  function openEditGoal(goal: PlanGoal) { setGoalEditor({ goal, isNew: false }); }
+  function openEditGoal(goal: PlanGoal, returnView: PlannerView = 'plan') { setGoalEditor({ goal, isNew: false, returnView }); }
+  function moveGoalDeadline(goalId: string, deadline: string) {
+    const goal = planner.goals.find((item) => item.id === goalId);
+    if (goal) planner.upsertGoal({ ...goal, deadline });
+  }
   function openNewScheduleBlock() {
     setCreateHubOpen(false);
     const ordered = [...planner.scheduleBlocks].sort((a, b) => a.end.localeCompare(b.end));
@@ -989,7 +1034,7 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
           {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} scheduleBlocks={planner.scheduleBlocks} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} /> : null}
           {active === 'inbox' ? <InboxView today={planner.today} tasks={planner.tasks} onAdd={planner.upsertTask} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onMoveQuadrant={moveQuadrant} onSchedule={scheduleFromInbox} /> : null}
           {active === 'plan' ? <PlanView key={focusGoalId || 'plan'} today={planner.today} goals={planner.goals} focusGoalId={focusGoalId} onNewGoalTask={(goal) => openNew(activeDate, null, goal)} onNewGoal={openNewGoal} onEditGoal={openEditGoal} onToggleGoalCheck={planner.toggleGoalCheck} /> : null}
-          {active === 'calendar' ? <CalendarView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onMove={planner.moveTask} /> : null}
+          {active === 'calendar' ? <CalendarView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} goals={planner.goals} onDateChange={setSelectedDate} onNew={openNew} onNewGoal={(date) => openNewGoal(null, date, 'calendar')} onEdit={openEdit} onEditGoal={(goal) => openEditGoal(goal, 'calendar')} onToggle={planner.toggleTask} onMove={planner.moveTask} onMoveGoal={moveGoalDeadline} /> : null}
           {active === 'focus' ? <FocusView today={planner.today} tasks={planner.tasks} selectedTaskId={focusTaskId} onSelect={setFocusTaskId} onComplete={planner.toggleTask} /> : null}
         </div>
       </section>
@@ -999,7 +1044,7 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
 
       {createHubOpen ? <CreateHub onClose={() => setCreateHubOpen(false)} onTask={() => openNew()} onBlock={openNewScheduleBlock} onGoal={() => openNewGoal(null)} /> : null}
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
-      {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive('plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
+      {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive(goalEditor.returnView ?? 'plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
       {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} legalBaseUrl={legalBaseUrl} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onDeleteAccount={deleteAccount} onClose={() => setSettingsOpen(false)} /> : null}
       {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}

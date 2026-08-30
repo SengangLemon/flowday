@@ -542,11 +542,13 @@ export function usePlanner(userId: string) {
       let nextTasks = current.tasks.map((task) => task.goalId === saved.id
         ? { ...task, goal: saved.title, updatedAt: nextMutationTimestamp(task.updatedAt) }
         : task);
-      const deadlineChanged = !existing || existing.deadline !== saved.deadline;
-      const generatedDetailsChanged = deadlineChanged
+      const deadlineChanged = !existing
+        || existing.deadline !== saved.deadline
+        || existing.deadlinePlan !== saved.deadlinePlan;
+      const generatedDetailsChanged = saved.deadlinePlan === 'application' && (deadlineChanged
         || !existing
         || existing.title !== saved.title
-        || existing.color !== saved.color;
+        || existing.color !== saved.color);
       if (generatedDetailsChanged) {
         nextTasks = syncApplicationPreparationTasks(nextTasks, saved, updatedAt, deadlineChanged);
       }

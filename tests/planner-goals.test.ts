@@ -4,6 +4,7 @@ import {
   createEmptyGoal,
   formatGoalNumericProgress,
   goalNumericProgress,
+  goalsForDate,
   syncApplicationPreparationTasks,
 } from '../app/lib/planner';
 
@@ -39,6 +40,7 @@ describe('application deadline reverse schedule', () => {
       id: 'graduate-school',
       title: '대학원 지원',
       deadline: '2026-12-15',
+      deadlinePlan: 'application' as const,
     };
     const created = syncApplicationPreparationTasks([], goal, 100, true);
     expect(created).toHaveLength(3);
@@ -56,9 +58,24 @@ describe('application deadline reverse schedule', () => {
       id: 'graduate-school',
       title: '대학원 지원',
       deadline: '2026-12-15',
+      deadlinePlan: 'application' as const,
     };
     const created = syncApplicationPreparationTasks([], goal, 100, true);
     const afterDeletion = created.filter((task) => task.generatedKey !== 'recommendation');
     expect(syncApplicationPreparationTasks(afterDeletion, { ...goal, detail: '설명 변경' }, 200, false)).toHaveLength(2);
+  });
+
+  it('keeps a normal dated goal free of application preparation tasks', () => {
+    const goal = { ...createEmptyGoal(), title: '포트폴리오 완성', deadline: '2027-03-01' };
+    expect(syncApplicationPreparationTasks([], goal, 100, true)).toEqual([]);
+  });
+});
+
+describe('calendar goals', () => {
+  it('returns only goals due on the selected date', () => {
+    const older = { ...createEmptyGoal(), id: 'older', title: '논문 제출', deadline: '2027-03-01', updatedAt: 10 };
+    const newer = { ...createEmptyGoal(), id: 'newer', title: '포트폴리오 완성', deadline: '2027-03-01', updatedAt: 20 };
+    const other = { ...createEmptyGoal(), id: 'other', title: '다른 날짜', deadline: '2027-03-02' };
+    expect(goalsForDate([older, other, newer], '2027-03-01').map((goal) => goal.id)).toEqual(['newer', 'older']);
   });
 });
