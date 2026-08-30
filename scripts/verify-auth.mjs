@@ -16,7 +16,16 @@ const password = `${randomUUID()}Aa1!`;
 const createdUserIds = [];
 
 function emptyState() {
-  return { version: 6, tasks: [], goals: [], scheduleBlocks: [], theme: 'light', introducedViews: [] };
+  return {
+    version: 7,
+    tasks: [],
+    goals: [],
+    scheduleBlocks: [],
+    theme: 'light',
+    introducedViews: [],
+    tombstones: { tasks: {}, goals: {}, scheduleBlocks: {} },
+    metadata: { themeUpdatedAt: 0 },
+  };
 }
 
 try {
@@ -38,12 +47,28 @@ try {
   const { error: strangerLoginError } = await stranger.auth.signInWithPassword({ email: users[1].email, password });
   if (ownerLoginError || strangerLoginError) throw ownerLoginError ?? strangerLoginError;
 
-  const { error: ownWriteError } = await owner.from('planner_documents').insert({
-    user_id: users[0].id,
-    state: emptyState(),
-    revision: Date.now(),
-  });
-  if (ownWriteError) throw new Error(`Own-row write failed: ${ownWriteError.message}`);
+  const firstState = emptyState();
+  const { data: firstWrite, error: ownWriteError } = await owner
+    .rpc('compare_and_swap_planner_document', { p_expected_revision: 0, p_state: firstState })
+    .single();
+  if (ownWriteError || !firstWrite?.applied || Number(firstWrite.revision) !== 1) {
+    throw new Error(`Initial CAS write failed: ${ownWriteError?.message ?? 'unexpected result'}`);
+  }
+
+  const conflictingState = { ...emptyState(), theme: 'dark', metadata: { themeUpdatedAt: Date.now() } };
+  const { data: staleWrite, error: staleWriteError } = await owner
+    .rpc('compare_and_swap_planner_document', { p_expected_revision: 0, p_state: conflictingState })
+    .single();
+  if (staleWriteError || staleWrite?.applied || Number(staleWrite?.revision) !== 1 || staleWrite?.state?.theme !== 'light') {
+    throw new Error(`Stale CAS was not rejected: ${staleWriteError?.message ?? 'unexpected result'}`);
+  }
+
+  const { data: secondWrite, error: secondWriteError } = await owner
+    .rpc('compare_and_swap_planner_document', { p_expected_revision: 1, p_state: conflictingState })
+    .single();
+  if (secondWriteError || !secondWrite?.applied || Number(secondWrite.revision) !== 2 || secondWrite.state?.theme !== 'dark') {
+    throw new Error(`Matching CAS update failed: ${secondWriteError?.message ?? 'unexpected result'}`);
+  }
 
   const { data: ownRows, error: ownReadError } = await owner.from('planner_documents').select('user_id');
   if (ownReadError || ownRows?.length !== 1 || ownRows[0].user_id !== users[0].id) {
@@ -63,7 +88,7 @@ try {
     .eq('user_id', users[0].id);
   if (crossReadError || crossRows?.length !== 0) throw new Error('RLS allowed a cross-user read');
 
-  console.log('Verified Supabase Auth and planner RLS (own access: allowed, cross-user access: blocked).');
+  console.log('Verified Supabase Auth, planner RLS, and revision CAS conflict protection.');
 } finally {
   for (const userId of createdUserIds) {
     await admin.auth.admin.deleteUser(userId);

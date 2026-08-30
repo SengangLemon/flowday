@@ -51,13 +51,25 @@ export type PlanGoal = {
   updatedAt: number;
 };
 
+export type PlannerTombstones = {
+  tasks: Record<string, number>;
+  goals: Record<string, number>;
+  scheduleBlocks: Record<string, number>;
+};
+
+export type PlannerMetadata = {
+  themeUpdatedAt: number;
+};
+
 export type PlannerState = {
-  version: 6;
+  version: 7;
   tasks: PlannerTask[];
   goals: PlanGoal[];
   scheduleBlocks: ScheduleBlock[];
   theme: Theme;
   introducedViews: PlannerView[];
+  tombstones: PlannerTombstones;
+  metadata: PlannerMetadata;
 };
 
 export const PROJECTS: { name: string; color: TaskColor }[] = [
@@ -115,6 +127,12 @@ export function dateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+export function millisecondsUntilNextLocalDay(now: Date) {
+  const next = new Date(now);
+  next.setHours(24, 0, 1, 0);
+  return Math.max(1, next.getTime() - now.getTime());
 }
 
 export function shiftDate(key: string, amount: number) {

@@ -12,7 +12,9 @@
     "ios:sync": "npm run mobile:build && cap sync ios",
     "ios:open": "cap open ios",
     "start": "next start",
-    "lint": "eslint . --ignore-pattern .next --ignore-pattern mobile-dist --ignore-pattern ios/App/App/public",
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern mobile-dist --ignore-pattern ios/App/App/public --ignore-pattern NaerilYeok-Rebuild",
+    "test": "vitest run",
+    "ci": "npm run lint && npm test && npm run build",
     "db:migrate": "node scripts/migrate.mjs",
     "verify:auth": "node scripts/verify-auth.mjs"
   },
@@ -42,7 +44,8 @@
     "eslint-config-next": "^16.3.2",
     "postgres": "^3.4.9",
     "typescript": "5.9.3",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "vitest": "^4.1.11"
   },
   "type": "module"
 }

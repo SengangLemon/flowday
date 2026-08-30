@@ -33,3 +33,4 @@ yarn-error.log*
 
 # deployment and generated files
 .vercel
+/supabase/.temp/
