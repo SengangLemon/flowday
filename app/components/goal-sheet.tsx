@@ -1,8 +1,17 @@
 'use client';
 
-import { AlignLeft, Check, GitBranch, Repeat2, Target, X } from 'lucide-react';
+import { AlignLeft, CalendarClock, Check, Gauge, GitBranch, Repeat2, Target, X } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
-import { goalHorizon, GOAL_HORIZONS, GOAL_PERIODS, PlanGoal, TaskColor } from '../lib/planner';
+import {
+  applicationPreparationSchedule,
+  formatDateLabel,
+  formatGoalNumericProgress,
+  goalHorizon,
+  GOAL_HORIZONS,
+  GOAL_PERIODS,
+  PlanGoal,
+  TaskColor,
+} from '../lib/planner';
 import { ConfirmDeleteButton } from './confirm-delete-button';
 
 type GoalSheetProps = {
@@ -26,6 +35,8 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
   const [goal, setGoal] = useState(initialGoal);
   const isRoot = goal.parentId === null;
   const horizon = GOAL_HORIZONS.find((item) => item.id === goalHorizon(goal.period, goal.daily)) ?? GOAL_HORIZONS[2];
+  const progressLabel = formatGoalNumericProgress(goal);
+  const preparationSchedule = applicationPreparationSchedule(goal.deadline);
   const parentOptions = useMemo(() => {
     const descendants = new Set<string>();
     let changed = true;
@@ -43,6 +54,11 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
 
   function update<K extends keyof PlanGoal>(key: K, value: PlanGoal[K]) {
     setGoal((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateProgress(key: 'progressCurrent' | 'progressTarget', value: string) {
+    const parsed = Number(value);
+    update(key, value === '' || !Number.isFinite(parsed) ? null : Math.max(0, parsed));
   }
 
   function handleSubmit(event: FormEvent) {
@@ -88,6 +104,28 @@ export function GoalSheet({ goal: initialGoal, goals, isNew, onClose, onSave, on
               </div>
             </div>
             <div className="field-row field-row-toggle"><Repeat2 size={18} /><div><strong>매일 체크</strong><small>잔디 기록에 매일 쌓기</small></div><button className={`switch ${goal.daily ? 'on' : ''}`} type="button" role="switch" aria-label="매일 체크" aria-checked={goal.daily} onClick={() => update('daily', !goal.daily)}><i /></button></div>
+          </section>
+
+          <section className="sheet-section">
+            <h3>측정과 마감</h3>
+            <div className="choice-block goal-progress-editor">
+              <header><span><Gauge size={16} />수치형 진행률</span><strong>{progressLabel ?? '선택 사항'}</strong></header>
+              <div className="goal-progress-inputs">
+                <label><span>현재</span><input type="number" inputMode="decimal" min="0" step="0.1" value={goal.progressCurrent ?? ''} onChange={(event) => updateProgress('progressCurrent', event.target.value)} placeholder="69" aria-label="현재 진행 수치" /></label>
+                <span aria-hidden="true">/</span>
+                <label><span>목표</span><input type="number" inputMode="decimal" min="0" step="0.1" value={goal.progressTarget ?? ''} onChange={(event) => updateProgress('progressTarget', event.target.value)} placeholder="130" aria-label="목표 수치" /></label>
+                <label className="goal-progress-unit"><span>단위</span><input value={goal.progressUnit} maxLength={20} onChange={(event) => update('progressUnit', event.target.value)} placeholder="학점" aria-label="진행률 단위" /></label>
+              </div>
+              <p className="goal-horizon-hint">학점, 점수, 횟수처럼 숫자로 확인할 목표에 사용하세요.</p>
+            </div>
+            <div className="choice-block goal-deadline-editor">
+              <header><span><CalendarClock size={16} />지원 마감일</span><strong>{goal.deadline ? formatDateLabel(goal.deadline, { year: 'numeric', month: 'short', day: 'numeric' }) : '날짜 선택'}</strong></header>
+              <label className="goal-deadline-field"><span>마감일</span><input type="date" value={goal.deadline ?? ''} onChange={(event) => update('deadline', event.target.value || null)} aria-label="지원 마감일" /></label>
+              {preparationSchedule.length ? <div className="deadline-preview" aria-label="자동 준비 일정 미리보기">
+                {preparationSchedule.map((milestone) => <div key={milestone.key}><i /><span><strong>{milestone.title}</strong><small>{formatDateLabel(milestone.date, { month: 'short', day: 'numeric', weekday: 'short' })} · {milestone.offsetLabel}</small></span></div>)}
+                <p>저장하면 인박스와 캘린더에 준비 할 일 3개가 자동으로 만들어집니다.</p>
+              </div> : <p className="goal-horizon-hint">마감일을 선택하면 추천서·SOP·성적표 준비일을 자동으로 역산합니다.</p>}
+            </div>
           </section>
 
           <section className="sheet-section">

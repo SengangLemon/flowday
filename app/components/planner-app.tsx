@@ -49,7 +49,9 @@ import {
   createEmptyScheduleBlock,
   createEmptyTask,
   formatDateLabel,
+  formatGoalNumericProgress,
   goalHorizon,
+  goalNumericProgress,
   GOAL_HORIZONS,
   minutesToTime,
   monthGridDates,
@@ -378,6 +380,14 @@ function goalProgress(goals: PlanGoal[], goalId: string, today: string): number 
   return Math.round(completed / (dailyGoals.length * dates.length) * 100);
 }
 
+function goalProgressSummary(goals: PlanGoal[], goal: PlanGoal, today: string) {
+  const numericProgress = goalNumericProgress(goal);
+  const numericLabel = formatGoalNumericProgress(goal);
+  if (numericProgress !== null && numericLabel) return { percent: numericProgress, label: numericLabel };
+  const habitProgress = goalProgress(goals, goal.id, today);
+  return habitProgress === null ? null : { percent: habitProgress, label: `최근 7일 ${habitProgress}%` };
+}
+
 function levelLabel(depth: number) {
   let value = depth + 1;
   let label = '';
@@ -492,10 +502,12 @@ type GoalBranchProps = {
 function GoalBranch({ goal, goals, today, selectedId, depth = 0, onSelect, onEdit, onAddChild, onAddTask, onToggleCheck }: GoalBranchProps) {
   const children = goals.filter((item) => item.parentId === goal.id);
   const checked = goal.checkins.includes(today);
+  const numericProgress = formatGoalNumericProgress(goal);
+  const deadline = goal.deadline ? formatDateLabel(goal.deadline, { month: 'short', day: 'numeric' }) : null;
   return (
     <div className="goal-branch" style={{ '--goal-depth': depth } as CSSProperties}>
       <article className={`goal-node ${goal.color} ${selectedId === goal.id ? 'selected' : ''}`}>
-        <button className="goal-node-main" onClick={() => onSelect(goal.id)}><span>{goalCode(goal, goals, depth)} · {goalHorizonLabel(goal)}</span><strong>{goal.title}</strong><small>{goal.period || '기간 미정'} · {goal.detail || '완료 기준을 추가해보세요.'}</small></button>
+        <button className="goal-node-main" onClick={() => onSelect(goal.id)}><span>{goalCode(goal, goals, depth)} · {goalHorizonLabel(goal)}</span><strong>{goal.title}</strong><small>{goal.period || '기간 미정'} · {numericProgress ?? (goal.detail || '완료 기준을 추가해보세요.')}{deadline ? ` · 마감 ${deadline}` : ''}</small></button>
         <div className="goal-node-actions">
           {goal.daily ? <button className={`daily-check ${checked ? 'checked' : ''}`} onClick={() => onToggleCheck(goal.id, today)} aria-label={`${goal.title} 오늘 체크`}><CheckCircle2 size={15} />{checked ? '오늘 완료' : '오늘 체크'}</button> : null}
           <button onClick={() => onAddTask(goal)} aria-label="실행 블록 추가"><CalendarDays size={15} /></button>
@@ -571,12 +583,12 @@ function PlanView({ today, goals, focusGoalId, onNewGoalTask, onNewGoal, onEditG
       <section className="plan-ladder" aria-label="계획 단계">{horizonCounts.map((horizon, index) => <article className={horizon.id} key={horizon.id}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{horizon.label} 계획</strong><small>{horizon.description}</small></div><b>{horizon.count}</b>{index < horizonCounts.length - 1 ? <ChevronRight size={15} /> : null}</article>)}</section>
       {!goals.length ? <section className="plan-empty-card"><EmptyState icon={Target} title="첫 계획을 만들어보세요" description="예시 데이터 없이 완전히 빈 상태입니다. 기간을 자유롭게 정하고, 어느 단계에서든 하위 계획을 계속 추가할 수 있습니다." action="첫 계획 만들기" onAction={() => onNewGoal(null)} /></section> : <div className="plan-workspace">
         <section className="goal-root-section"><header><div><span className="overline">계획 목록</span><h2>나의 계획</h2></div><button onClick={() => onNewGoal(null)}><Plus size={15} />계획 추가</button></header><div className="goal-flow">{roots.map((goal) => {
-          const progress = goalProgress(goals, goal.id, today);
+          const progress = goalProgressSummary(goals, goal, today);
           const childCount = goalScope(goals, goal.id).length - 1;
-          return <article className={`goal-root-card ${goal.color} ${breadcrumb[0]?.id === goal.id ? 'selected' : ''}`} key={goal.id}><button className="goal-root-main" onClick={() => setSelectedGoalId(goal.id)}><span className="goal-root-period">{goalCode(goal, goals, 0)} · {goalHorizonLabel(goal)} · {goal.period || '기간 미정'}</span><strong className="goal-root-title">{goal.title}</strong><small>{goal.detail || '완료 기준을 추가해보세요.'}</small>{progress === null ? <span className="goal-progress-empty">매일 실행 연결 전</span> : <span className="goal-progress"><span><i style={{ width: `${progress}%` }} /></span><b>{progress}%</b></span>}</button><footer><button className="goal-manage-button" onClick={() => setSelectedGoalId(goal.id)}><GitBranch size={14} />세분화 관리 · {childCount}</button><button onClick={() => onEditGoal(goal)}><Pencil size={14} />수정</button></footer></article>;
+          return <article className={`goal-root-card ${goal.color} ${breadcrumb[0]?.id === goal.id ? 'selected' : ''}`} key={goal.id}><button className="goal-root-main" onClick={() => setSelectedGoalId(goal.id)}><span className="goal-root-period">{goalCode(goal, goals, 0)} · {goalHorizonLabel(goal)} · {goal.period || '기간 미정'}</span><strong className="goal-root-title">{goal.title}</strong><small>{goal.detail || '완료 기준을 추가해보세요.'}</small>{progress === null ? <span className="goal-progress-empty">진행률 또는 매일 실행 설정 전</span> : <span className="goal-progress"><span><i style={{ width: `${progress.percent}%` }} /></span><b>{progress.label}</b></span>}</button><footer><button className="goal-manage-button" onClick={() => setSelectedGoalId(goal.id)}><GitBranch size={14} />세분화 관리 · {childCount}</button><button onClick={() => onEditGoal(goal)}><Pencil size={14} />수정</button></footer></article>;
         })}</div></section>
         {selectedGoal ? <section className={`goal-detail-panel ${hasDailyPlans ? '' : 'no-activity'}`}>
-          <header className="goal-detail-header"><div><div className="goal-breadcrumb">{breadcrumb.map((goal, index) => <span key={goal.id}>{index ? <ChevronRight size={12} /> : null}<button onClick={() => setSelectedGoalId(goal.id)}>{goal.title}</button></span>)}</div><span className="goal-detail-period">{selectedGoal.period || '기간 미정'} 계획 관리</span><h2>{selectedGoal.title}</h2><p>{selectedGoal.detail || '완료 기준과 하위 계획을 추가해보세요.'}</p></div><div><button onClick={() => onNewGoal(selectedGoal.id)}><GitBranch size={15} />하위 계획 추가</button><button onClick={() => onEditGoal(selectedGoal)}><Pencil size={15} />수정</button></div></header>
+          <header className="goal-detail-header"><div><div className="goal-breadcrumb">{breadcrumb.map((goal, index) => <span key={goal.id}>{index ? <ChevronRight size={12} /> : null}<button onClick={() => setSelectedGoalId(goal.id)}>{goal.title}</button></span>)}</div><span className="goal-detail-period">{selectedGoal.period || '기간 미정'} 계획 관리</span><h2>{selectedGoal.title}</h2><p>{selectedGoal.detail || '완료 기준과 하위 계획을 추가해보세요.'}</p>{formatGoalNumericProgress(selectedGoal) || selectedGoal.deadline ? <div className="goal-detail-metrics">{formatGoalNumericProgress(selectedGoal) ? <span><BarChart3 size={13} />{formatGoalNumericProgress(selectedGoal)} · {goalNumericProgress(selectedGoal)}%</span> : null}{selectedGoal.deadline ? <span><CalendarDays size={13} />마감 {formatDateLabel(selectedGoal.deadline, { year: 'numeric', month: 'short', day: 'numeric' })}</span> : null}</div> : null}</div><div><button onClick={() => onNewGoal(selectedGoal.id)}><GitBranch size={15} />하위 계획 추가</button><button onClick={() => onEditGoal(selectedGoal)}><Pencil size={15} />수정</button></div></header>
           <div className="goal-tree-card"><header><div><GitBranch size={18} /><span><strong>계획 구조</strong><small>A→B1…→C12처럼 단계와 개수 제한 없이 세분화합니다.</small></span></div></header><GoalBranch goal={selectedGoal} goals={goals} today={today} selectedId={selectedGoal.id} depth={Math.max(0, breadcrumb.length - 1)} onSelect={setSelectedGoalId} onEdit={onEditGoal} onAddChild={onNewGoal} onAddTask={onNewGoalTask} onToggleCheck={onToggleGoalCheck} /></div>
           <DailyPlanTracker goals={goals} goalId={selectedGoal.id} today={today} onToggle={onToggleGoalCheck} />
         </section> : null}

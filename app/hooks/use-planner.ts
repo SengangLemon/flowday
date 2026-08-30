@@ -12,6 +12,7 @@ import {
   PlannerTask,
   PlannerView,
   ScheduleBlock,
+  syncApplicationPreparationTasks,
   taskCompletedOn,
   tasksForDate,
   Theme,
@@ -511,6 +512,8 @@ export function usePlanner(userId: string) {
         completed: false,
         completionDates: [],
         occurrenceDate: undefined,
+        generatedBy: undefined,
+        generatedKey: undefined,
         createdAt: now,
         updatedAt: now,
       }] };
@@ -536,9 +539,17 @@ export function usePlanner(userId: string) {
       const nextGoals = existing
         ? current.goals.map((item) => item.id === goal.id ? saved : item)
         : [...current.goals, saved];
-      const nextTasks = current.tasks.map((task) => task.goalId === saved.id
+      let nextTasks = current.tasks.map((task) => task.goalId === saved.id
         ? { ...task, goal: saved.title, updatedAt: nextMutationTimestamp(task.updatedAt) }
         : task);
+      const deadlineChanged = !existing || existing.deadline !== saved.deadline;
+      const generatedDetailsChanged = deadlineChanged
+        || !existing
+        || existing.title !== saved.title
+        || existing.color !== saved.color;
+      if (generatedDetailsChanged) {
+        nextTasks = syncApplicationPreparationTasks(nextTasks, saved, updatedAt, deadlineChanged);
+      }
       return { ...current, goals: nextGoals, tasks: nextTasks };
     });
   }, [commit]);

@@ -6,6 +6,7 @@ export type Quadrant = 'do' | 'schedule' | 'delegate' | 'delete';
 export type RepeatRule = 'none' | 'daily' | 'weekdays' | 'weekly' | 'monthly';
 export type GoalPeriod = string;
 export type GoalHorizon = 'long' | 'mid' | 'short' | 'daily';
+export type ApplicationMilestoneKey = 'recommendation' | 'sop' | 'transcript';
 
 export type ScheduleBlock = {
   id: string;
@@ -34,6 +35,8 @@ export type PlannerTask = {
   occurrenceDate?: string;
   goalId: string | null;
   goal: string;
+  generatedBy?: 'application-deadline';
+  generatedKey?: ApplicationMilestoneKey;
   createdAt: number;
   updatedAt: number;
 };
@@ -47,8 +50,19 @@ export type PlanGoal = {
   color: TaskColor;
   daily: boolean;
   checkins: string[];
+  progressCurrent: number | null;
+  progressTarget: number | null;
+  progressUnit: string;
+  deadline: string | null;
   createdAt: number;
   updatedAt: number;
+};
+
+export type ApplicationMilestone = {
+  key: ApplicationMilestoneKey;
+  title: string;
+  date: string;
+  offsetLabel: string;
 };
 
 export type PlannerTombstones = {
@@ -142,6 +156,21 @@ export function shiftDate(key: string, amount: number) {
   return dateKey(date);
 }
 
+function isDateKey(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  return dateKey(new Date(year, month - 1, day)) === value;
+}
+
+export function applicationPreparationSchedule(deadline: string | null): ApplicationMilestone[] {
+  if (!deadline || !isDateKey(deadline)) return [];
+  return [
+    { key: 'recommendation', title: '추천서 요청 및 확인', date: shiftDate(deadline, -42), offsetLabel: '마감 6주 전' },
+    { key: 'sop', title: 'SOP 초안 완성', date: shiftDate(deadline, -28), offsetLabel: '마감 4주 전' },
+    { key: 'transcript', title: '성적표 발급 및 검토', date: shiftDate(deadline, -14), offsetLabel: '마감 2주 전' },
+  ];
+}
+
 export function formatDateLabel(key: string, options?: Intl.DateTimeFormatOptions) {
   const [year, month, day] = key.split('-').map(Number);
   return new Intl.DateTimeFormat('ko-KR', options ?? { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date(year, month - 1, day));
@@ -225,6 +254,11 @@ export function tasksForDate(tasks: PlannerTask[], date: string) {
 
 export function normalizeTask(task: PlannerTask): PlannerTask {
   const repeatRules: RepeatRule[] = ['none', 'daily', 'weekdays', 'weekly', 'monthly'];
+  const milestoneKeys: ApplicationMilestoneKey[] = ['recommendation', 'sop', 'transcript'];
+  const generatedBy = task.generatedBy === 'application-deadline' ? task.generatedBy : undefined;
+  const generatedKey = generatedBy && milestoneKeys.includes(task.generatedKey as ApplicationMilestoneKey)
+    ? task.generatedKey as ApplicationMilestoneKey
+    : undefined;
   return {
     ...task,
     repeat: repeatRules.includes(task.repeat) ? task.repeat : 'none',
@@ -232,6 +266,8 @@ export function normalizeTask(task: PlannerTask): PlannerTask {
     occurrenceDate: undefined,
     goalId: typeof task.goalId === 'string' && task.goalId ? task.goalId : null,
     goal: typeof task.goal === 'string' ? task.goal : '',
+    generatedBy,
+    generatedKey,
   };
 }
 
@@ -263,6 +299,10 @@ export function createEmptyScheduleBlock(start = '05:00', end = '08:00'): Schedu
 }
 
 export function normalizeGoal(goal: PlanGoal): PlanGoal {
+  const normalizeProgressNumber = (value: unknown) => {
+    const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  };
   return {
     ...goal,
     parentId: typeof goal.parentId === 'string' ? goal.parentId : null,
@@ -271,7 +311,82 @@ export function normalizeGoal(goal: PlanGoal): PlanGoal {
     period: typeof goal.period === 'string' ? goal.period : '',
     daily: Boolean(goal.daily),
     checkins: Array.isArray(goal.checkins) ? [...new Set(goal.checkins.filter((date) => typeof date === 'string'))].sort() : [],
+    progressCurrent: normalizeProgressNumber(goal.progressCurrent),
+    progressTarget: normalizeProgressNumber(goal.progressTarget),
+    progressUnit: typeof goal.progressUnit === 'string' ? goal.progressUnit.trim().slice(0, 20) : '',
+    deadline: typeof goal.deadline === 'string' && isDateKey(goal.deadline) ? goal.deadline : null,
   };
+}
+
+export function goalNumericProgress(goal: Pick<PlanGoal, 'progressCurrent' | 'progressTarget'>) {
+  if (goal.progressCurrent === null || goal.progressTarget === null || goal.progressTarget <= 0) return null;
+  return Math.round(Math.max(0, Math.min(1, goal.progressCurrent / goal.progressTarget)) * 100);
+}
+
+export function formatGoalNumericProgress(goal: Pick<PlanGoal, 'progressCurrent' | 'progressTarget' | 'progressUnit'>) {
+  if (goalNumericProgress(goal) === null || goal.progressCurrent === null || goal.progressTarget === null) return null;
+  const hasDecimal = !Number.isInteger(goal.progressCurrent) || !Number.isInteger(goal.progressTarget);
+  const formatter = new Intl.NumberFormat('ko-KR', {
+    minimumFractionDigits: hasDecimal ? 1 : 0,
+    maximumFractionDigits: 2,
+  });
+  return `${formatter.format(goal.progressCurrent)}/${formatter.format(goal.progressTarget)}${goal.progressUnit}`;
+}
+
+export function syncApplicationPreparationTasks(
+  tasks: PlannerTask[],
+  goal: PlanGoal,
+  updatedAt: number,
+  createMissing: boolean,
+) {
+  const milestones = applicationPreparationSchedule(goal.deadline);
+  if (!milestones.length) return tasks;
+
+  const milestoneByKey = new Map(milestones.map((milestone) => [milestone.key, milestone]));
+  const nextTasks = tasks.map((task) => {
+    if (task.generatedBy !== 'application-deadline' || task.goalId !== goal.id || !task.generatedKey) return task;
+    const milestone = milestoneByKey.get(task.generatedKey);
+    if (!milestone) return task;
+    return normalizeTask({
+      ...task,
+      title: `${milestone.title} · ${goal.title}`,
+      notes: `지원 마감 ${goal.deadline} · ${milestone.offsetLabel}`,
+      date: milestone.date,
+      goal: goal.title,
+      color: goal.color,
+      updatedAt: Math.max(updatedAt, task.updatedAt + 1),
+    });
+  });
+
+  if (!createMissing) return nextTasks;
+  for (const milestone of milestones) {
+    const exists = nextTasks.some((task) => task.generatedBy === 'application-deadline'
+      && task.goalId === goal.id
+      && task.generatedKey === milestone.key);
+    if (exists) continue;
+    nextTasks.push(normalizeTask({
+      id: `deadline-${goal.id}-${milestone.key}`,
+      title: `${milestone.title} · ${goal.title}`,
+      notes: `지원 마감 ${goal.deadline} · ${milestone.offsetLabel}`,
+      date: milestone.date,
+      start: '09:00',
+      duration: 30,
+      project: '성장',
+      color: goal.color,
+      priority: 2,
+      quadrant: 'schedule',
+      completed: false,
+      repeat: 'none',
+      completionDates: [],
+      goalId: goal.id,
+      goal: goal.title,
+      generatedBy: 'application-deadline',
+      generatedKey: milestone.key,
+      createdAt: updatedAt,
+      updatedAt,
+    }));
+  }
+  return nextTasks;
 }
 
 export function createEmptyGoal(parentId: string | null = null, parentPeriod?: string): PlanGoal {
@@ -285,6 +400,10 @@ export function createEmptyGoal(parentId: string | null = null, parentPeriod?: s
     color: 'sage',
     daily: false,
     checkins: [],
+    progressCurrent: null,
+    progressTarget: null,
+    progressUnit: '',
+    deadline: null,
     createdAt: now,
     updatedAt: now,
   };
