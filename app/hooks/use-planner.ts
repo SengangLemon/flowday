@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '../lib/supabase/client';
 import {
   dateKey,
@@ -101,10 +102,10 @@ function readStoredDocument(userId: string): PlannerLocalDocument {
   return emptyLocalDocument();
 }
 
-export function usePlanner(userId: string) {
+export function usePlanner(userId: string, client?: SupabaseClient) {
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [today, setToday] = useState(() => dateKey(new Date()));
-  const [supabase] = useState(() => createClient());
+  const [supabase] = useState(() => client ?? createClient());
   const [initialDocument] = useState<PlannerLocalDocument>(() => {
     if (typeof window === 'undefined') return emptyLocalDocument();
     return readStoredDocument(userId);

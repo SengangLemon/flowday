@@ -32,7 +32,7 @@ type OperationResult = { ok: boolean; message: string };
 type SettingsSheetProps = {
   userEmail: string;
   theme: Theme;
-  counts: { tasks: number; goals: number; blocks: number };
+  counts: { tasks: number; goals: number; blocks: number; ratings: number };
   lastSavedAt: number | null;
   saveError: boolean;
   syncStatus: PlannerSyncStatus;
@@ -189,7 +189,7 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
 
           <section className="settings-section">
             <header><div><strong>데이터 백업</strong><p>클라우드 동기화와 별도로 내 기록을 파일로 보관하고 복구할 수 있습니다.</p></div><DatabaseBackup size={19} /></header>
-            <div className="data-counts"><span><b>{counts.tasks}</b>할 일</span><span><b>{counts.goals}</b>계획</span><span><b>{counts.blocks}</b>시간 블록</span></div>
+            <div className="data-counts"><span><b>{counts.tasks}</b>할 일</span><span><b>{counts.goals}</b>계획</span><span><b>{counts.blocks}</b>시간 블록</span><span><b>{counts.ratings}</b>하루 감상</span></div>
             <div className="settings-actions">
               <button type="button" onClick={handleExport}><Download size={17} /><span><strong>백업 내보내기</strong><small>JSON 파일로 안전하게 보관</small></span></button>
               <button type="button" onClick={() => fileInputRef.current?.click()}><FileUp size={17} /><span><strong>백업 가져오기</strong><small>다른 기기나 이전 기록 복구</small></span></button>
@@ -205,12 +205,12 @@ export function SettingsSheet({ userEmail, theme, counts, lastSavedAt, saveError
           </section>
 
           <section className="settings-section danger-zone">
-            <header><div><strong>데이터 초기화</strong><p>모든 할 일, 계획, 시간 블록과 완료 기록을 비웁니다.</p></div></header>
+            <header><div><strong>데이터 초기화</strong><p>모든 할 일, 계획, 시간 블록, 하루 감상과 완료 기록을 비웁니다.</p></div></header>
             {!resetConfirm ? <button type="button" onClick={() => setResetConfirm(true)}><Trash2 size={16} />모든 데이터 삭제</button> : <div className="settings-confirm" role="alert"><div><strong>정말 처음부터 시작할까요?</strong><p>삭제 직후에는 ‘직전 데이터 복구’로 한 번 되돌릴 수 있습니다.</p></div><button type="button" onClick={() => setResetConfirm(false)}>취소</button><button className="danger" type="button" onClick={() => { onReset(); setResetConfirm(false); setCanRestore(true); setMessage({ tone: 'success', text: '모든 데이터를 비웠습니다.' }); }}>전체 삭제</button></div>}
           </section>
 
           <section className="settings-section danger-zone account-delete-zone">
-            <header><div><strong>계정 삭제</strong><p>로그인 계정과 클라우드에 연결된 모든 계획 및 완료 기록을 영구 삭제합니다.</p></div><UserX size={19} /></header>
+            <header><div><strong>계정 삭제</strong><p>로그인 계정과 클라우드에 연결된 모든 계획, 하루 감상 및 완료 기록을 영구 삭제합니다.</p></div><UserX size={19} /></header>
             {!deleteAccountConfirm ? (
               <button type="button" onClick={() => { setDeleteAccountConfirm(true); setDeleteAccountError(''); }}><UserX size={16} />계정 삭제 요청</button>
             ) : (

@@ -9,6 +9,7 @@ import {
   Focus,
   Inbox,
   Repeat2,
+  Sparkles,
   Target,
   X,
   type LucideIcon,
@@ -28,9 +29,9 @@ type MenuIntroContent = {
 const MENU_INTROS: Record<PlannerView, MenuIntroContent> = {
   habit: {
     menu: '습관',
-    title: '시간 블록으로 하루를 배치해요',
-    caption: '블록을 눌러 습관과 할 일을 채워보세요.',
-    visualLabel: '새벽부터 저녁까지 시간대별로 배치된 세 개의 습관 블록',
+    title: '하루를 보내고, 감상까지 남겨요',
+    caption: '시간 블록을 실행하고 0.01점 단위로 하루를 돌아봅니다.',
+    visualLabel: '시간대별 습관 블록과 8.47점으로 평가한 하루',
     icon: Repeat2,
   },
   inbox: {
@@ -75,6 +76,7 @@ function MenuIntroVisual({ view, label }: { view: PlannerView; label: string }) 
           <span>09</span><div className="intro-time-block violet"><Focus size={13} /><i /><small>3h</small></div>
           <span>13</span><div className="intro-time-block amber"><Check size={13} /><i /><small>3h</small></div>
         </div>
+        <div className="intro-rating-badge"><Sparkles size={14} /><strong>8.47</strong><small>/ 10</small></div>
       </div>
     );
   }

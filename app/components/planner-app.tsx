@@ -33,7 +33,14 @@ import {
   X,
 } from 'lucide-react';
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { usePlanner } from '../hooks/use-planner';
+import { type DailyRatingSyncStatus, useDailyRatings } from '../hooks/use-daily-ratings';
+import { type PlannerSyncStatus, usePlanner } from '../hooks/use-planner';
+import {
+  DailyRating,
+  formatRating,
+  ratingTier,
+  ratingsByDate,
+} from '../lib/daily-rating';
 import {
   cancelFocusNotification,
   configureNativeShell,
@@ -74,6 +81,7 @@ import {
   weekDates,
 } from '../lib/planner';
 import { GoalSheet } from './goal-sheet';
+import { DayRatingSheet, DayRatingSummary, RatingTrend } from './day-rating';
 import { MenuIntro } from './menu-intro';
 import { SettingsSheet } from './settings-sheet';
 import { TaskSheet } from './task-sheet';
@@ -82,6 +90,15 @@ import { TimeBlockSheet } from './time-block-sheet';
 type EditorState = { task: PlannerTask; isNew: boolean } | null;
 type GoalEditorState = { goal: PlanGoal; isNew: boolean; returnView?: PlannerView } | null;
 type TimeBlockEditorState = { block: ScheduleBlock; isNew: boolean } | null;
+type RatingEditorState = { date: string } | null;
+
+export function combineSyncStatuses(plannerStatus: PlannerSyncStatus, ratingStatus: DailyRatingSyncStatus): PlannerSyncStatus {
+  if (plannerStatus === 'error' || ratingStatus === 'error') return 'error';
+  if (plannerStatus === 'offline' || ratingStatus === 'offline') return 'offline';
+  if (plannerStatus === 'saving' || ratingStatus === 'saving') return 'saving';
+  if (plannerStatus === 'loading' || ratingStatus === 'loading') return 'loading';
+  return 'synced';
+}
 
 const NAV_ITEMS: { id: PlannerView; label: string; icon: typeof Inbox }[] = [
   { id: 'habit', label: '습관', icon: Repeat2 },
@@ -106,19 +123,22 @@ type WeekStripProps = {
   selectedDate: string;
   today: string;
   tasks: PlannerTask[];
+  ratings?: DailyRating[];
   onSelect: (date: string) => void;
 };
 
-function WeekStrip({ selectedDate, today, tasks, onSelect }: WeekStripProps) {
+function WeekStrip({ selectedDate, today, tasks, ratings = [], onSelect }: WeekStripProps) {
   const dates = weekDates(selectedDate);
+  const ratingMap = ratingsByDate(ratings);
   return (
     <nav className="week-strip" aria-label="주간 날짜 선택">
       {dates.map((date) => {
         const parts = formatDateLabel(date, { weekday: 'short', day: 'numeric' }).replace('.', '').split(' ');
         const taskCount = tasksForDate(tasks, date).filter((task) => !task.completed).length;
+        const rating = ratingMap.get(date);
         return (
           <button className={`${selectedDate === date ? 'selected' : ''} ${today === date ? 'today' : ''}`} key={date} onClick={() => onSelect(date)}>
-            <span>{parts[0]}</span><strong>{Number(date.slice(-2))}</strong><i className={taskCount ? 'has-tasks' : ''} />
+            <span>{parts[0]}</span><strong>{Number(date.slice(-2))}</strong>{rating ? <small>{formatRating(rating.scoreHundredths)}</small> : <i className={taskCount ? 'has-tasks' : ''} />}
           </button>
         );
       })}
@@ -200,33 +220,37 @@ type HabitViewProps = {
   onNewScheduleBlock: () => void;
   onEditScheduleBlock: (block: ScheduleBlock) => void;
   onUseScheduleBlock: (block: ScheduleBlock) => void;
+  ratings: DailyRating[];
+  ratingSyncStatus: ReturnType<typeof useDailyRatings>['syncStatus'];
+  onRate: (date: string) => void;
 };
 
-function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, onToggle, onFocus, onMove, onSchedule, scheduleBlocks, onNewScheduleBlock, onEditScheduleBlock, onUseScheduleBlock }: HabitViewProps) {
+function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, onToggle, onFocus, onMove, onSchedule, scheduleBlocks, onNewScheduleBlock, onEditScheduleBlock, onUseScheduleBlock, ratings, ratingSyncStatus, onRate }: HabitViewProps) {
   const timed = useMemo(() => tasksForDate(tasks, selectedDate).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')), [tasks, selectedDate]);
   const inboxTasks = useMemo(() => tasks.filter((task) => !task.start && !task.completed).sort((a, b) => a.priority - b.priority), [tasks]);
   const completed = timed.filter((task) => task.completed).length;
   const completion = timed.length ? Math.round(completed / timed.length * 100) : 0;
   const [dragId, setDragId] = useState<string | null>(null);
+  const rating = ratings.find((item) => item.date === selectedDate);
 
   return (
     <div className="today-view habit-view">
-      <WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />
-      <section className="day-hero">
-        <div>
+      <WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} ratings={ratings} onSelect={onDateChange} />
+      <section className="day-hero day-dashboard">
+        <div className="day-hero-copy">
           <span className="overline">{selectedDate === today ? '오늘의 리듬' : '선택한 날짜'}</span>
           <h1>{formatDateLabel(selectedDate)}</h1>
           <p>{timed.length ? '오늘의 흐름을 하나씩 실행해보세요.' : '인박스의 할 일을 가져오거나 새 습관을 만들어보세요.'}</p>
           {timed.length ? <div className="day-progress"><span>오늘 진행</span><div><i style={{ width: `${completion}%` }} /></div><strong>{completed}/{timed.length}</strong></div> : null}
         </div>
+        <DayRatingSummary date={selectedDate} today={today} rating={rating} syncStatus={ratingSyncStatus} onOpen={onRate} />
       </section>
 
-      <section className="habit-inbox-callout">
-        <header><div><Inbox size={18} /><span><strong>인박스에서 가져오기</strong><small>할 일을 원하는 시간대의 블록으로 배치합니다.</small></span></div><b>{inboxTasks.length}</b></header>
-        {inboxTasks.length ? <div className="habit-inbox-list">{inboxTasks.slice(0, 4).map((task) => <div key={task.id}><span className={`color-dot ${task.color}`} /><button onClick={() => onEdit(task)}><strong>{task.title}</strong><small>{task.project} · P{task.priority}</small></button><button onClick={() => onSchedule(task, selectedDate)}><Clock3 size={14} />배치</button></div>)}</div> : <p>인박스가 비어 있습니다. 먼저 할 일을 적어보세요.</p>}
-      </section>
-
-      <TimeBlockDesigner blocks={scheduleBlocks} onNew={onNewScheduleBlock} onEdit={onEditScheduleBlock} onUse={onUseScheduleBlock} />
+      <nav className="day-quick-actions" aria-label="선택한 날짜 빠른 실행">
+        <button onClick={() => onNew(selectedDate, '09:00')}><Plus size={17} /><span><strong>일정 추가</strong><small>시간을 정해 실행하기</small></span></button>
+        <button onClick={() => document.getElementById('habit-inbox')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}><Inbox size={17} /><span><strong>인박스 배치</strong><small>{inboxTasks.length}개 기다리는 중</small></span></button>
+        <button disabled={selectedDate > today} onClick={() => onRate(selectedDate)}><Sparkles size={17} /><span><strong>하루 평가</strong><small>{rating ? `${formatRating(rating.scoreHundredths)}점 수정` : '감상 기록하기'}</small></span></button>
+      </nav>
 
       <section className="timeline-section">
         <header className="section-heading"><div><span className="overline">오늘 타임라인</span><h2>습관과 실행</h2></div><button onClick={() => onNew(selectedDate, '09:00')}><Plus size={16} />새 습관</button></header>
@@ -251,6 +275,16 @@ function HabitView({ selectedDate, today, tasks, onDateChange, onNew, onEdit, on
           {timed.length ? <button className="timeline-add-row" onClick={() => onNew(selectedDate, '18:00')}><Plus size={16} />새 습관 블록</button> : null}
         </div>
       </section>
+
+      <RatingTrend ratings={ratings} selectedDate={selectedDate} today={today} onOpen={onRate} />
+
+      <div className="day-support-grid">
+        <section className="habit-inbox-callout" id="habit-inbox">
+          <header><div><Inbox size={18} /><span><strong>인박스에서 가져오기</strong><small>할 일을 원하는 시간대의 블록으로 배치합니다.</small></span></div><b>{inboxTasks.length}</b></header>
+          {inboxTasks.length ? <div className="habit-inbox-list">{inboxTasks.slice(0, 4).map((task) => <div key={task.id}><span className={`color-dot ${task.color}`} /><button onClick={() => onEdit(task)}><strong>{task.title}</strong><small>{task.project} · P{task.priority}</small></button><button onClick={() => onSchedule(task, selectedDate)}><Clock3 size={14} />배치</button></div>)}</div> : <p>인박스가 비어 있습니다. 먼저 할 일을 적어보세요.</p>}
+        </section>
+        <div id="habit-time-blocks"><TimeBlockDesigner blocks={scheduleBlocks} onNew={onNewScheduleBlock} onEdit={onEditScheduleBlock} onUse={onUseScheduleBlock} /></div>
+      </div>
     </div>
   );
 }
@@ -604,6 +638,7 @@ type CalendarViewProps = {
   today: string;
   tasks: PlannerTask[];
   goals: PlanGoal[];
+  ratings?: DailyRating[];
   onDateChange: (date: string) => void;
   onNew: (date: string, start?: string | null) => void;
   onNewGoal: (date: string) => void;
@@ -612,6 +647,7 @@ type CalendarViewProps = {
   onToggle: (id: string, occurrenceDate?: string) => void;
   onMove: (id: string, date: string, start?: string | null) => void;
   onMoveGoal: (id: string, date: string) => void;
+  onRateDay?: (date: string) => void;
 };
 type CalendarBodyProps = CalendarViewProps & { onOpenMonth?: (date: string) => void; onDragStartTask?: (taskId: string) => void };
 
@@ -634,37 +670,41 @@ function CalendarGoalCard({ goal, onEdit, layout = 'week' }: { goal: PlanGoal; o
   );
 }
 
-function MonthCalendar({ selectedDate, today, tasks, goals, onDateChange, onEdit, onEditGoal, onMove, onMoveGoal, onDragStartTask }: CalendarBodyProps) {
+function MonthCalendar({ selectedDate, today, tasks, goals, ratings = [], onDateChange, onEdit, onEditGoal, onMove, onMoveGoal, onRateDay, onDragStartTask }: CalendarBodyProps) {
   const dates = monthGridDates(selectedDate);
   const month = selectedDate.slice(0, 7);
+  const ratingMap = ratingsByDate(ratings);
   return <div className="month-calendar"><div className="month-weekdays">{WEEKDAY_LABELS.map((day) => <span key={day}>{day}</span>)}</div><div className="month-grid">{dates.map((date) => {
     const dayTasks = tasksForDate(tasks, date).filter((task) => task.start);
     const dayGoals = goalsForDate(goals, date);
     const visibleGoals = dayGoals.slice(0, 2);
     const visibleTasks = dayTasks.slice(0, Math.max(0, 3 - visibleGoals.length));
     const hiddenCount = dayGoals.length + dayTasks.length - visibleGoals.length - visibleTasks.length;
-    return <article className={`${date.slice(0, 7) === month ? '' : 'outside'} ${date === today ? 'today' : ''} ${date === selectedDate ? 'selected' : ''}`} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain'); if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); }}><button className="month-day-number" onClick={() => onDateChange(date)} aria-label={`${formatDateLabel(date)} 선택`}>{Number(date.slice(-2))}</button><div>{visibleGoals.map((goal) => <button className={`month-goal-dot ${goal.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-flowday-goal', goal.id); }} onClick={() => onEditGoal(goal)} key={`${goal.id}-${date}`}><Target size={8} />{goal.title}</button>)}{visibleTasks.map((task) => <button className={`month-task-dot ${task.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.id); onDragStartTask?.(task.id); }} onClick={() => onEdit(task)} key={`${task.id}-${date}`}><i />{task.title}</button>)}{hiddenCount > 0 ? <span>+{hiddenCount}</span> : null}</div></article>;
+    const rating = ratingMap.get(date);
+    return <article className={`${date.slice(0, 7) === month ? '' : 'outside'} ${date === today ? 'today' : ''} ${date === selectedDate ? 'selected' : ''} rating-tier-${ratingTier(rating?.scoreHundredths)}`} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain'); if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); }}><header className="month-day-header"><button className="month-day-number" onClick={() => onDateChange(date)} aria-label={`${formatDateLabel(date)} 선택`}>{Number(date.slice(-2))}</button>{date <= today ? <button className={`calendar-rating-pill ${rating ? 'has-rating' : ''}`} onClick={() => onRateDay?.(date)} aria-label={`${formatDateLabel(date)} 하루 평가`}>{rating ? formatRating(rating.scoreHundredths) : '평가'}</button> : null}</header><div>{visibleGoals.map((goal) => <button className={`month-goal-dot ${goal.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-flowday-goal', goal.id); }} onClick={() => onEditGoal(goal)} key={`${goal.id}-${date}`}><Target size={8} />{goal.title}</button>)}{visibleTasks.map((task) => <button className={`month-task-dot ${task.color}`} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', task.id); onDragStartTask?.(task.id); }} onClick={() => onEdit(task)} key={`${task.id}-${date}`}><i />{task.title}</button>)}{hiddenCount > 0 ? <span>+{hiddenCount}</span> : null}</div></article>;
   })}</div></div>;
 }
 
-function YearCalendar({ selectedDate, today, tasks, goals, onDateChange, onOpenMonth, onMove, onMoveGoal, onDragStartTask }: CalendarBodyProps) {
+function YearCalendar({ selectedDate, today, tasks, goals, ratings = [], onDateChange, onOpenMonth, onMove, onMoveGoal, onDragStartTask }: CalendarBodyProps) {
   const year = Number(selectedDate.slice(0, 4));
+  const ratingMap = ratingsByDate(ratings);
   return <div className="year-calendar">{Array.from({ length: 12 }, (_, monthIndex) => {
     const monthDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
     const dates = monthGridDates(monthDate);
     return <section className="year-month" key={monthDate}><button className="year-month-title" onClick={() => { onDateChange(monthDate); onOpenMonth?.(monthDate); }}>{monthIndex + 1}월 <ChevronRight size={14} /></button><span className="year-weekdays">{WEEKDAY_LABELS.map((day) => <i key={day}>{day}</i>)}</span><span className="year-days">{dates.map((date) => {
       const dayTasks = tasksForDate(tasks, date).filter((task) => task.start);
       const dayGoals = goalsForDate(goals, date);
+      const rating = ratingMap.get(date);
       const markers = [
         ...dayGoals.map((goal) => ({ id: goal.id, title: goal.title, color: goal.color, type: 'goal' as const })),
         ...dayTasks.map((task) => ({ id: task.id, title: task.title, color: task.color, type: 'task' as const })),
       ];
-      return <button className={`year-day ${date.slice(0, 7) === monthDate.slice(0, 7) ? '' : 'outside'} ${date === today ? 'today' : ''} ${markers.length ? 'has-task' : ''}`} key={date} onClick={() => { onDateChange(date); onOpenMonth?.(date); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain'); if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); }} aria-label={`${formatDateLabel(date)} · ${dayGoals.length}개 목표, ${dayTasks.length}개 블록`}><span>{Number(date.slice(-2))}</span><span className="year-task-colors">{markers.slice(0, 3).map((marker) => <i className={`${marker.color} ${marker.type === 'goal' ? 'goal-marker' : ''}`} key={`${marker.type}-${marker.id}-${date}`} title={marker.title} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.effectAllowed = 'move'; if (marker.type === 'goal') event.dataTransfer.setData('application/x-flowday-goal', marker.id); else { event.dataTransfer.setData('text/plain', marker.id); onDragStartTask?.(marker.id); } }} />)}</span></button>;
+      return <button className={`year-day ${date.slice(0, 7) === monthDate.slice(0, 7) ? '' : 'outside'} ${date === today ? 'today' : ''} ${markers.length ? 'has-task' : ''} rating-tier-${ratingTier(rating?.scoreHundredths)}`} key={date} onClick={() => { onDateChange(date); onOpenMonth?.(date); }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain'); if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); }} aria-label={`${formatDateLabel(date)} · ${rating ? `${formatRating(rating.scoreHundredths)}점, ` : ''}${dayGoals.length}개 목표, ${dayTasks.length}개 블록`}><span>{Number(date.slice(-2))}</span><span className="year-task-colors">{markers.slice(0, 3).map((marker) => <i className={`${marker.color} ${marker.type === 'goal' ? 'goal-marker' : ''}`} key={`${marker.type}-${marker.id}-${date}`} title={marker.title} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.effectAllowed = 'move'; if (marker.type === 'goal') event.dataTransfer.setData('application/x-flowday-goal', marker.id); else { event.dataTransfer.setData('text/plain', marker.id); onDragStartTask?.(marker.id); } }} />)}</span></button>;
     })}</span></section>;
   })}</div>;
 }
 
-export function CalendarView({ selectedDate, today, tasks, goals, onDateChange, onNew, onNewGoal, onEdit, onEditGoal, onToggle, onMove, onMoveGoal }: CalendarViewProps) {
+export function CalendarView({ selectedDate, today, tasks, goals, ratings = [], onDateChange, onNew, onNewGoal, onEdit, onEditGoal, onToggle, onMove, onMoveGoal, onRateDay }: CalendarViewProps) {
   const [mode, setMode] = useState<CalendarMode>('week');
   const [dragId, setDragId] = useState<string | null>(null);
   const dates = weekDates(selectedDate);
@@ -679,9 +719,28 @@ export function CalendarView({ selectedDate, today, tasks, goals, onDateChange, 
   return (
     <div className="content-view calendar-view-v2">
       <header className="view-intro calendar-intro"><div><span className="overline">일정과 목표</span><h1>{title}</h1><p>실행 블록과 날짜 목표를 함께 확인하고, 눌러 수정하거나 끌어서 날짜를 옮깁니다.</p></div><div className="calendar-header-tools"><div className="segmented-control"><button className={mode === 'week' ? 'active' : ''} onClick={() => setMode('week')}>주간</button><button className={mode === 'month' ? 'active' : ''} onClick={() => setMode('month')}>월간</button><button className={mode === 'year' ? 'active' : ''} onClick={() => setMode('year')}>연간</button></div><div className="calendar-nav"><button onClick={() => move(-1)} aria-label="이전 기간"><ChevronLeft size={18} /></button><button onClick={() => onDateChange(today)}>오늘</button><button onClick={() => move(1)} aria-label="다음 기간"><ChevronRight size={18} /></button><button className="calendar-goal-add" onClick={() => onNewGoal(selectedDate)} aria-label="선택한 날짜에 목표 추가"><Target size={15} /><span>목표</span></button><button className="calendar-add" onClick={() => onNew(selectedDate, '09:00')} aria-label="선택한 날짜에 블록 추가"><Plus size={17} /></button></div></div></header>
-      {mode === 'week' ? <><div className="calendar-week-desktop">{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); const dayGoals = goalsForDate(goals, date); return <section className={date === today ? 'today' : ''} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain') || dragId; if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); setDragId(null); }}><header><span>{formatDateLabel(date, { weekday: 'short' })}</span><strong>{Number(date.slice(-2))}</strong></header><div>{dayGoals.map((goal) => <CalendarGoalCard key={goal.id} goal={goal} onEdit={onEditGoal} />)}{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="calendar" />)}<div className="calendar-day-adds"><button onClick={() => onNewGoal(date)} aria-label={`${date} 목표 추가`}><Target size={14} /></button><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={15} /></button></div></div></section>; })}</div><div className="calendar-week-mobile"><WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} onSelect={onDateChange} />{dates.map((date) => { const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? '')); const dayGoals = goalsForDate(goals, date); return <section key={date} className={date === selectedDate ? 'selected' : ''}><header><div><strong>{formatDateLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })}</strong><span>{dayGoals.length}개 목표 · {dayTasks.length}개 블록</span></div><div className="calendar-mobile-day-actions"><button onClick={() => onNewGoal(date)} aria-label={`${date} 목표 추가`}><Target size={16} /></button><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={17} /></button></div></header>{dayGoals.length || dayTasks.length ? <>{dayGoals.map((goal) => <CalendarGoalCard key={goal.id} goal={goal} onEdit={onEditGoal} layout="list" />)}{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="list" />)}</> : <p>비어 있는 날입니다.</p>}</section>; })}</div></> : null}
-      {mode === 'month' ? <MonthCalendar selectedDate={selectedDate} today={today} tasks={tasks} goals={goals} onDateChange={onDateChange} onNew={onNew} onNewGoal={onNewGoal} onEdit={onEdit} onEditGoal={onEditGoal} onToggle={onToggle} onMove={onMove} onMoveGoal={onMoveGoal} onDragStartTask={setDragId} /> : null}
-      {mode === 'year' ? <YearCalendar selectedDate={selectedDate} today={today} tasks={tasks} goals={goals} onDateChange={onDateChange} onNew={onNew} onNewGoal={onNewGoal} onEdit={onEdit} onEditGoal={onEditGoal} onToggle={onToggle} onMove={onMove} onMoveGoal={onMoveGoal} onDragStartTask={setDragId} onOpenMonth={() => setMode('month')} /> : null}
+      {mode === 'week' ? <>
+        <div className="calendar-week-desktop">{dates.map((date) => {
+          const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+          const dayGoals = goalsForDate(goals, date);
+          const rating = ratings.find((item) => item.date === date);
+          return <section className={`${date === today ? 'today' : ''} rating-tier-${ratingTier(rating?.scoreHundredths)}`} key={date} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const goalId = event.dataTransfer.getData('application/x-flowday-goal'); const taskId = event.dataTransfer.getData('text/plain') || dragId; if (goalId) onMoveGoal(goalId, date); else if (taskId) onMove(taskId, date); setDragId(null); }}>
+            <header><span>{formatDateLabel(date, { weekday: 'short' })}</span><strong>{Number(date.slice(-2))}</strong>{date <= today ? <button className={`calendar-rating-pill ${rating ? 'has-rating' : ''}`} aria-label={`${formatDateLabel(date)} 하루 평가`} onClick={() => onRateDay?.(date)}>{rating ? formatRating(rating.scoreHundredths) : '평가'}</button> : null}</header>
+            <div>{dayGoals.map((goal) => <CalendarGoalCard key={goal.id} goal={goal} onEdit={onEditGoal} />)}{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="calendar" />)}<div className="calendar-day-adds"><button onClick={() => onNewGoal(date)} aria-label={`${date} 목표 추가`}><Target size={14} /></button><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={15} /></button></div></div>
+          </section>;
+        })}</div>
+        <div className="calendar-week-mobile">
+          <WeekStrip selectedDate={selectedDate} today={today} tasks={tasks} ratings={ratings} onSelect={onDateChange} />
+          {dates.map((date) => {
+            const dayTasks = tasksForDate(tasks, date).filter((task) => task.start).sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+            const dayGoals = goalsForDate(goals, date);
+            const rating = ratings.find((item) => item.date === date);
+            return <section key={date} className={`${date === selectedDate ? 'selected' : ''} rating-tier-${ratingTier(rating?.scoreHundredths)}`}><header><div><strong>{formatDateLabel(date, { weekday: 'long', month: 'short', day: 'numeric' })}</strong><span>{dayGoals.length}개 목표 · {dayTasks.length}개 블록</span></div><div className="calendar-mobile-day-actions">{date <= today ? <button className={`calendar-rating-pill ${rating ? 'has-rating' : ''}`} aria-label={`${formatDateLabel(date)} 하루 평가`} onClick={() => onRateDay?.(date)}>{rating ? formatRating(rating.scoreHundredths) : '평가'}</button> : null}<button onClick={() => onNewGoal(date)} aria-label={`${date} 목표 추가`}><Target size={16} /></button><button onClick={() => onNew(date, '09:00')} aria-label={`${date} 블록 추가`}><Plus size={17} /></button></div></header>{dayGoals.length || dayTasks.length ? <>{dayGoals.map((goal) => <CalendarGoalCard key={goal.id} goal={goal} onEdit={onEditGoal} layout="list" />)}{dayTasks.map((task) => <TaskCard key={`${task.id}-${date}`} task={task} onEdit={onEdit} onToggle={onToggle} draggable onDragStart={setDragId} layout="list" />)}</> : <p>비어 있는 날입니다.</p>}</section>;
+          })}
+        </div>
+      </> : null}
+      {mode === 'month' ? <MonthCalendar selectedDate={selectedDate} today={today} tasks={tasks} goals={goals} ratings={ratings} onDateChange={onDateChange} onNew={onNew} onNewGoal={onNewGoal} onEdit={onEdit} onEditGoal={onEditGoal} onToggle={onToggle} onMove={onMove} onMoveGoal={onMoveGoal} onRateDay={onRateDay} onDragStartTask={setDragId} /> : null}
+      {mode === 'year' ? <YearCalendar selectedDate={selectedDate} today={today} tasks={tasks} goals={goals} ratings={ratings} onDateChange={onDateChange} onNew={onNew} onNewGoal={onNewGoal} onEdit={onEdit} onEditGoal={onEditGoal} onToggle={onToggle} onMove={onMove} onMoveGoal={onMoveGoal} onRateDay={onRateDay} onDragStartTask={setDragId} onOpenMonth={() => setMode('month')} /> : null}
     </div>
   );
 }
@@ -782,22 +841,37 @@ type SearchOverlayProps = {
   tasks: PlannerTask[];
   goals: PlanGoal[];
   blocks: ScheduleBlock[];
+  ratings: DailyRating[];
   onQueryChange: (query: string) => void;
   onClose: () => void;
   onOpenTask: (task: PlannerTask) => void;
   onOpenGoal: (goal: PlanGoal) => void;
   onOpenBlock: (block: ScheduleBlock) => void;
+  onOpenRating: (rating: DailyRating) => void;
 };
 
-function SearchOverlay({ query, tasks, goals, blocks, onQueryChange, onClose, onOpenTask, onOpenGoal, onOpenBlock }: SearchOverlayProps) {
+function SearchOverlay({ query, tasks, goals, blocks, ratings, onQueryChange, onClose, onOpenTask, onOpenGoal, onOpenBlock, onOpenRating }: SearchOverlayProps) {
   const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
   const matches = (...values: string[]) => values.join(' ').toLocaleLowerCase('ko-KR').includes(normalizedQuery);
   const taskResults = normalizedQuery ? tasks.filter((task) => matches(task.title, task.project, task.notes, task.goal)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6) : [];
   const goalResults = normalizedQuery ? goals.filter((goal) => matches(goal.title, goal.detail, goal.period)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4) : [];
   const blockResults = normalizedQuery ? blocks.filter((block) => matches(block.name, block.start, block.end)).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 4) : [];
-  const hasResults = taskResults.length + goalResults.length + blockResults.length > 0;
+  const ratingResults = normalizedQuery ? ratings.filter((rating) => matches(rating.reflection, rating.tags.join(' '), rating.date, formatRating(rating.scoreHundredths))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5) : [];
+  const hasResults = taskResults.length + goalResults.length + blockResults.length + ratingResults.length > 0;
 
-  return <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div><header><Search size={18} /><input autoFocus value={query} aria-label="통합 검색어" placeholder="할 일, 계획, 시간 블록 검색" onChange={(event) => onQueryChange(event.target.value)} /><button type="button" onClick={onClose} aria-label="검색 닫기">ESC</button></header>{!normalizedQuery ? <p>제목, 프로젝트, 메모와 계획을 한 번에 검색할 수 있습니다.</p> : null}{normalizedQuery && !hasResults ? <p>일치하는 항목이 없습니다.</p> : null}{taskResults.length ? <div className="search-result-group"><strong>할 일</strong>{taskResults.map((task) => <button type="button" key={task.id} onClick={() => onOpenTask(task)}><i className={task.color} /><span><b>{task.title}</b><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div> : null}{goalResults.length ? <div className="search-result-group"><strong>계획</strong>{goalResults.map((goal) => <button type="button" key={goal.id} onClick={() => onOpenGoal(goal)}><i className={goal.color} /><span><b>{goal.title}</b><small>{goal.period} · {goal.parentId ? '하위 계획' : '최상위 계획'}</small></span><Target size={15} /></button>)}</div> : null}{blockResults.length ? <div className="search-result-group"><strong>시간 블록</strong>{blockResults.map((block) => <button type="button" key={block.id} onClick={() => onOpenBlock(block)}><i className={block.color} /><span><b>{block.name}</b><small>{block.start}–{block.end}</small></span><Clock3 size={15} /></button>)}</div> : null}</div></div>;
+  return (
+    <div className="search-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div>
+        <header><Search size={18} /><input autoFocus value={query} aria-label="통합 검색어" placeholder="할 일, 계획, 하루 감상 검색" onChange={(event) => onQueryChange(event.target.value)} /><button type="button" onClick={onClose} aria-label="검색 닫기">ESC</button></header>
+        {!normalizedQuery ? <p>제목, 프로젝트, 메모, 계획과 하루 감상을 한 번에 검색할 수 있습니다.</p> : null}
+        {normalizedQuery && !hasResults ? <p>일치하는 항목이 없습니다.</p> : null}
+        {taskResults.length ? <div className="search-result-group"><strong>할 일</strong>{taskResults.map((task) => <button type="button" key={task.id} onClick={() => onOpenTask(task)}><i className={task.color} /><span><b>{task.title}</b><small>{task.project} · {task.date}</small></span><Edit3 size={15} /></button>)}</div> : null}
+        {goalResults.length ? <div className="search-result-group"><strong>계획</strong>{goalResults.map((goal) => <button type="button" key={goal.id} onClick={() => onOpenGoal(goal)}><i className={goal.color} /><span><b>{goal.title}</b><small>{goal.period} · {goal.parentId ? '하위 계획' : '최상위 계획'}</small></span><Target size={15} /></button>)}</div> : null}
+        {ratingResults.length ? <div className="search-result-group rating-results"><strong>하루 감상</strong>{ratingResults.map((rating) => <button type="button" key={rating.date} onClick={() => onOpenRating(rating)}><i className={`rating-tier-${ratingTier(rating.scoreHundredths)}`} /><span><b>{rating.reflection || rating.tags.join(' · ') || '하루 평가'}</b><small>{rating.date} · {formatRating(rating.scoreHundredths)}점</small></span><Sparkles size={15} /></button>)}</div> : null}
+        {blockResults.length ? <div className="search-result-group"><strong>시간 블록</strong>{blockResults.map((block) => <button type="button" key={block.id} onClick={() => onOpenBlock(block)}><i className={block.color} /><span><b>{block.name}</b><small>{block.start}–{block.end}</small></span><Clock3 size={15} /></button>)}</div> : null}
+      </div>
+    </div>
+  );
 }
 
 type CreateHubProps = {
@@ -825,8 +899,8 @@ function CreateHub({ onClose, onTask, onBlock, onGoal }: CreateHubProps) {
   );
 }
 
-type BottomNavProps = { active: PlannerView; onChange: (view: PlannerView) => void; onAdd: () => void };
-function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
+type BottomNavProps = { active: PlannerView; onChange: (view: PlannerView) => void };
+function BottomNav({ active, onChange }: BottomNavProps) {
   return (
     <nav className="mobile-bottom-nav" aria-label="모바일 주요 메뉴">
       {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
@@ -834,7 +908,6 @@ function BottomNav({ active, onChange, onAdd }: BottomNavProps) {
           <Icon size={20} /><span>{label}</span>
         </button>
       ))}
-      <button className="mobile-fab" onClick={onAdd} aria-label="새로 만들기"><Plus size={24} /></button>
     </nav>
   );
 }
@@ -848,12 +921,15 @@ type PlannerAppProps = {
 };
 
 export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onAuthExit }: PlannerAppProps) {
-  const planner = usePlanner(userId);
+  const [supabase] = useState(() => createClient());
+  const planner = usePlanner(userId, supabase);
+  const dailyRatings = useDailyRatings(userId, supabase);
   const [active, setActive] = useState<PlannerView>('habit');
   const [selectedDate, setSelectedDate] = useState('');
   const [editor, setEditor] = useState<EditorState>(null);
   const [goalEditor, setGoalEditor] = useState<GoalEditorState>(null);
   const [timeBlockEditor, setTimeBlockEditor] = useState<TimeBlockEditorState>(null);
+  const [ratingEditor, setRatingEditor] = useState<RatingEditorState>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createHubOpen, setCreateHubOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -865,7 +941,7 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
   const activeDate = selectedDate || planner.today;
   const automaticIntroView = planner.ready && !planner.introducedViews.includes(active) && closedIntroView !== active ? active : null;
   const introView = replayIntroView ?? automaticIntroView;
-  const overlayOpen = Boolean(introView) || settingsOpen || createHubOpen || searchOpen || Boolean(editor || goalEditor || timeBlockEditor);
+  const overlayOpen = Boolean(introView) || settingsOpen || createHubOpen || searchOpen || Boolean(editor || goalEditor || timeBlockEditor || ratingEditor);
 
   useEffect(() => {
     void configureNativeShell(planner.theme);
@@ -892,6 +968,7 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
         setEditor(null);
         setGoalEditor(null);
         setTimeBlockEditor(null);
+        setRatingEditor(null);
       }
     }
     window.addEventListener('keydown', handleKeyboard);
@@ -915,6 +992,59 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
   }, [overlayOpen]);
 
   function closeSearch() { setSearchOpen(false); setSearchQuery(''); }
+  function openRating(date: string) { setRatingEditor({ date }); }
+
+  function exportAllData() {
+    const plannerBackup = JSON.parse(planner.exportBackup()) as Record<string, unknown>;
+    return JSON.stringify({
+      ...plannerBackup,
+      dailyRatings: { version: 1, ratings: dailyRatings.ratings },
+    }, null, 2);
+  }
+
+  function importAllData(raw: string) {
+    let ratingBackup: { version?: number; ratings?: unknown } | undefined;
+    try {
+      const parsed = JSON.parse(raw) as { dailyRatings?: { version?: number; ratings?: unknown } };
+      ratingBackup = parsed.dailyRatings;
+      if (ratingBackup?.version === 1 && !Array.isArray(ratingBackup.ratings)) {
+        return { ok: false as const, message: '하루 감상 백업 형식을 확인해주세요.' };
+      }
+    } catch {
+      return { ok: false as const, message: '파일을 읽을 수 없습니다. JSON 백업 파일인지 확인해주세요.' };
+    }
+    const result = planner.importBackup(raw);
+    if (!result.ok) return result;
+    if (ratingBackup?.version === 1) {
+      if (!dailyRatings.importRatings(ratingBackup.ratings)) {
+        planner.restoreRecovery();
+        return { ok: false as const, message: '하루 감상 백업이 손상되어 가져오기를 취소했습니다.' };
+      }
+    } else {
+      // Keep ratings unchanged for an older planner-only backup, but align the undo snapshot.
+      dailyRatings.captureRecovery();
+    }
+    return result;
+  }
+
+  function resetAllData() {
+    planner.resetPlanner();
+    dailyRatings.resetRatings();
+  }
+
+  function restoreAllData() {
+    const plannerResult = planner.restoreRecovery();
+    if (!plannerResult.ok) return plannerResult;
+    const ratingResult = dailyRatings.restoreRecovery();
+    if (!ratingResult.ok) {
+      planner.restoreRecovery();
+      return ratingResult;
+    }
+    return {
+      ok: true as const,
+      message: ratingResult.restored ? '직전 계획과 하루 감상으로 되돌렸습니다.' : plannerResult.message,
+    };
+  }
 
   function completeMenuIntro() {
     if (!introView) return;
@@ -967,7 +1097,6 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
   }
 
   async function signOut() {
-    const supabase = createClient();
     await supabase.auth.signOut();
     if (onAuthExit) {
       onAuthExit();
@@ -978,7 +1107,6 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
 
   async function deleteAccount() {
     try {
-      const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(accountApiUrl ?? '/api/account', {
         method: 'DELETE',
@@ -994,6 +1122,7 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
       }
 
       planner.clearLocalPlannerData();
+      dailyRatings.clearLocalData();
       await supabase.auth.signOut({ scope: 'local' });
       if (onAuthExit) {
         onAuthExit();
@@ -1006,16 +1135,20 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
     }
   }
 
+  const combinedSyncStatus = planner.saveError
+    ? 'error'
+    : combineSyncStatuses(planner.syncStatus, dailyRatings.syncStatus);
+  const combinedSaveError = combinedSyncStatus === 'error';
   const syncLabel = {
     loading: '클라우드 연결 중',
     saving: '변경사항 저장 중',
     synced: '모든 기기와 동기화됨',
     offline: '오프라인 · 이 기기에 저장됨',
     error: '클라우드 연결을 확인해주세요',
-  }[planner.syncStatus];
-  const SyncIcon = planner.syncStatus === 'error' || planner.syncStatus === 'offline' ? CloudOff : Cloud;
+  }[combinedSyncStatus];
+  const SyncIcon = combinedSyncStatus === 'error' || combinedSyncStatus === 'offline' ? CloudOff : Cloud;
 
-  if (!planner.ready || !activeDate) return <div className="app-loading"><span><Image src="/flowday-icon-192.png" width={48} height={48} alt="" priority /></span><strong>Flowday</strong><i /></div>;
+  if (!planner.ready || !dailyRatings.ready || !activeDate) return <div className="app-loading"><span><Image src="/flowday-icon-192.png" width={48} height={48} alt="" priority /></span><strong>Flowday</strong><i /></div>;
 
   return (
     <main className={`planner-shell theme-${planner.theme}`}>
@@ -1023,31 +1156,32 @@ export function PlannerApp({ userId, userEmail, accountApiUrl, legalBaseUrl, onA
         <button className="app-brand" onClick={() => setActive('habit')}><span><Image src="/flowday-icon-192.png" width={33} height={33} alt="" priority /></span><strong>Flowday</strong></button>
         <nav>{NAV_ITEMS.map(({ id, label, icon: Icon }) => <button className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} key={id} onClick={() => setActive(id)}><Icon size={18} /><span>{label}</span>{id === 'inbox' ? <b>{planner.tasks.filter((task) => !task.start && !task.completed).length}</b> : null}</button>)}</nav>
         <section className="sidebar-projects"><header><span>프로젝트</span><Plus size={14} /></header>{PROJECTS.map((project) => <button key={project.name}><i className={project.color} />{project.name}<span>{planner.tasks.filter((task) => task.project === project.name && !task.completed).length}</span></button>)}</section>
-        <footer><button onClick={() => setSettingsOpen(true)}><Settings2 size={18} />설정과 데이터</button><div className={`sync-state ${planner.saveError ? 'error' : ''}`}><SyncIcon size={15} /><span>{syncLabel}</span></div></footer>
+        <footer><button onClick={() => setSettingsOpen(true)}><Settings2 size={18} />설정과 데이터</button><div className={`sync-state ${combinedSaveError ? 'error' : ''}`}><SyncIcon size={15} /><span>{syncLabel}</span></div></footer>
       </aside>
 
       <section className="planner-main">
-        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div className="mobile-header-copy"><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><div className="mobile-header-actions"><button className="icon-button ghost" onClick={() => setSearchOpen(true)} aria-label="통합 검색"><Search size={19} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={20} /></button></div></header>
+        <header className="mobile-header"><button className="mobile-logo" onClick={() => setActive('habit')} aria-label="습관으로 이동"><Image src="/flowday-icon-192.png" width={39} height={39} alt="" priority /></button><div className="mobile-header-copy"><span>{VIEW_TITLES[active]}</span><strong>Flowday</strong></div><div className="mobile-header-actions"><button className="icon-button ghost" onClick={() => setSearchOpen(true)} aria-label="통합 검색"><Search size={19} /></button><button className="icon-button mobile-create" onClick={() => setCreateHubOpen(true)} aria-label="새로 만들기"><Plus size={20} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={20} /></button></div></header>
         <header className="desktop-topbar"><div className="desktop-search"><Search size={16} /><input placeholder="검색" aria-label="검색" onFocus={() => setSearchOpen(true)} /><kbd><Command size={12} /> K</kbd></div><div><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label={`동기화 상태: ${syncLabel}`}><SyncIcon size={18} /></button><button className="icon-button ghost" onClick={() => setSettingsOpen(true)} aria-label="설정과 데이터"><Settings2 size={18} /></button></div></header>
 
         <div className="view-container">
-          {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} scheduleBlocks={planner.scheduleBlocks} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} /> : null}
+          {active === 'habit' ? <HabitView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} onDateChange={setSelectedDate} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onFocus={startFocus} onMove={planner.moveTask} onSchedule={scheduleFromInbox} scheduleBlocks={planner.scheduleBlocks} onNewScheduleBlock={openNewScheduleBlock} onEditScheduleBlock={openEditScheduleBlock} onUseScheduleBlock={useScheduleBlock} ratings={dailyRatings.ratings} ratingSyncStatus={dailyRatings.syncStatus} onRate={openRating} /> : null}
           {active === 'inbox' ? <InboxView today={planner.today} tasks={planner.tasks} onAdd={planner.upsertTask} onNew={openNew} onEdit={openEdit} onToggle={planner.toggleTask} onMoveQuadrant={moveQuadrant} onSchedule={scheduleFromInbox} /> : null}
           {active === 'plan' ? <PlanView key={focusGoalId || 'plan'} today={planner.today} goals={planner.goals} focusGoalId={focusGoalId} onNewGoalTask={(goal) => openNew(activeDate, null, goal)} onNewGoal={openNewGoal} onEditGoal={openEditGoal} onToggleGoalCheck={planner.toggleGoalCheck} /> : null}
-          {active === 'calendar' ? <CalendarView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} goals={planner.goals} onDateChange={setSelectedDate} onNew={openNew} onNewGoal={(date) => openNewGoal(null, date, 'calendar')} onEdit={openEdit} onEditGoal={(goal) => openEditGoal(goal, 'calendar')} onToggle={planner.toggleTask} onMove={planner.moveTask} onMoveGoal={moveGoalDeadline} /> : null}
+          {active === 'calendar' ? <CalendarView selectedDate={activeDate} today={planner.today} tasks={planner.tasks} goals={planner.goals} ratings={dailyRatings.ratings} onDateChange={setSelectedDate} onNew={openNew} onNewGoal={(date) => openNewGoal(null, date, 'calendar')} onEdit={openEdit} onEditGoal={(goal) => openEditGoal(goal, 'calendar')} onToggle={planner.toggleTask} onMove={planner.moveTask} onMoveGoal={moveGoalDeadline} onRateDay={openRating} /> : null}
           {active === 'focus' ? <FocusView today={planner.today} tasks={planner.tasks} selectedTaskId={focusTaskId} onSelect={setFocusTaskId} onComplete={planner.toggleTask} /> : null}
         </div>
       </section>
 
       <button className="desktop-fab" onClick={() => setCreateHubOpen(true)}><Plus size={21} /><span>새로 만들기</span></button>
-      <BottomNav active={active} onChange={setActive} onAdd={() => setCreateHubOpen(true)} />
+      <BottomNav active={active} onChange={setActive} />
 
       {createHubOpen ? <CreateHub onClose={() => setCreateHubOpen(false)} onTask={() => openNew()} onBlock={openNewScheduleBlock} onGoal={() => openNewGoal(null)} /> : null}
       {editor ? <TaskSheet key={`${editor.task.id}-${editor.isNew}`} task={editor.task} tasks={planner.tasks} goals={planner.goals} scheduleBlocks={planner.scheduleBlocks} isNew={editor.isNew} onClose={() => setEditor(null)} onSave={(task) => { planner.upsertTask(task); setEditor(null); }} onDelete={planner.deleteTask} onDuplicate={planner.duplicateTask} /> : null}
       {goalEditor ? <GoalSheet key={`${goalEditor.goal.id}-${goalEditor.isNew}`} goal={goalEditor.goal} goals={planner.goals} isNew={goalEditor.isNew} onClose={() => setGoalEditor(null)} onSave={(goal) => { planner.upsertGoal(goal); setFocusGoalId(goal.id); setActive(goalEditor.returnView ?? 'plan'); setGoalEditor(null); }} onDelete={planner.deleteGoal} /> : null}
       {timeBlockEditor ? <TimeBlockSheet key={`${timeBlockEditor.block.id}-${timeBlockEditor.isNew}`} block={timeBlockEditor.block} isNew={timeBlockEditor.isNew} onClose={() => setTimeBlockEditor(null)} onSave={(block) => { planner.upsertScheduleBlock(block); setTimeBlockEditor(null); }} onDelete={planner.deleteScheduleBlock} /> : null}
-      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length }} lastSavedAt={planner.lastSavedAt} saveError={planner.saveError} syncStatus={planner.syncStatus} legalBaseUrl={legalBaseUrl} onThemeChange={planner.setTheme} onExport={planner.exportBackup} onImport={planner.importBackup} onRestore={planner.restoreRecovery} onReset={planner.resetPlanner} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onDeleteAccount={deleteAccount} onClose={() => setSettingsOpen(false)} /> : null}
-      {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} /> : null}
+      {ratingEditor ? <DayRatingSheet key={ratingEditor.date} date={ratingEditor.date} today={planner.today} rating={dailyRatings.ratings.find((item) => item.date === ratingEditor.date)} syncStatus={dailyRatings.syncStatus} onSave={dailyRatings.saveRating} onDelete={dailyRatings.deleteRating} onClose={() => setRatingEditor(null)} /> : null}
+      {settingsOpen ? <SettingsSheet userEmail={userEmail} theme={planner.theme} counts={{ tasks: planner.tasks.length, goals: planner.goals.length, blocks: planner.scheduleBlocks.length, ratings: dailyRatings.ratings.length }} lastSavedAt={planner.lastSavedAt} saveError={combinedSaveError} syncStatus={combinedSyncStatus} legalBaseUrl={legalBaseUrl} onThemeChange={planner.setTheme} onExport={exportAllData} onImport={importAllData} onRestore={restoreAllData} onReset={resetAllData} onShowMenuIntro={showCurrentMenuIntro} onSignOut={signOut} onDeleteAccount={deleteAccount} onClose={() => setSettingsOpen(false)} /> : null}
+      {searchOpen ? <SearchOverlay query={searchQuery} tasks={planner.tasks} goals={planner.goals} blocks={planner.scheduleBlocks} ratings={dailyRatings.ratings} onQueryChange={setSearchQuery} onClose={closeSearch} onOpenTask={(task) => { openEdit(task); closeSearch(); }} onOpenGoal={(goal) => { openEditGoal(goal); closeSearch(); }} onOpenBlock={(block) => { openEditScheduleBlock(block); closeSearch(); }} onOpenRating={(rating) => { openRating(rating.date); closeSearch(); }} /> : null}
       {introView ? <MenuIntro key={introView} view={introView} onComplete={completeMenuIntro} /> : null}
     </main>
   );
